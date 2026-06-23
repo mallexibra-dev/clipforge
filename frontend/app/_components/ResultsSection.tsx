@@ -2,6 +2,7 @@ import { Clipboard, Download, ExternalLink, Video } from "lucide-react";
 import { getOutputUrl } from "../../lib/apiClient";
 import { clipTitle, handleCopyTitle, handleDownload } from "../../lib/utils";
 import type { ClipFile } from "../../types/clip.type";
+import { ThumbnailPrompt } from "./ThumbnailPrompt";
 
 type ResultsSectionProps = {
   clips: ClipFile[];
@@ -46,6 +47,7 @@ export function ResultsSection({ clips }: ResultsSectionProps) {
                     Unduh
                   </button>
                 </div>
+                <ThumbnailPrompt clip={clip} />
               </article>
             );
           })}

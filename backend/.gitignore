@@ -21,3 +21,5 @@ jobs.json.tmp
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+outputs/
+uploads/

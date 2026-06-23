@@ -12,6 +12,11 @@ RUN apt-get update \
       libglib2.0-0 \
       libgl1 \
       libgomp1 \
+      fontconfig \
+      fonts-dejavu-core \
+      fonts-dejavu \
+      fonts-liberation \
+      fonts-noto-core \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

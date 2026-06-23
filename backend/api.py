@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -13,34 +14,59 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import quote
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from yt_dlp import YoutubeDL
 
 
 BASE_DIR = Path(__file__).resolve().parent
 OUTPUTS_DIR = BASE_DIR / "outputs"
+UPLOADS_DIR = BASE_DIR / "uploads"
 JOBS_PATH = BASE_DIR / "jobs.json"
+ALLOWED_UPLOAD_EXTENSIONS = {".mp4", ".mov", ".mkv", ".webm", ".m4v", ".avi"}
 SECONDS_PER_TARGET_CLIP = 360
 MIN_AUTO_CLIPS = 2
 MAX_AUTO_CLIPS = 8
 FULL_ANALYSIS_LIMIT_SECONDS = 30 * 60
 LONG_VIDEO_ANALYSIS_RATIO = 0.55
 MAX_AUTO_ANALYSIS_SECONDS = 60 * 60
+CLIP_BUDGET_RATIO = 0.8
 
 
 class ClipJobRequest(BaseModel):
-    url: str = Field(min_length=8)
-    top: int | None = Field(default=None, ge=1, le=12)
+    url: str = ""
+    source_file: str = ""
+    top: int | None = Field(default=None, ge=1, le=50)
     min_duration: float = Field(default=35, ge=5, le=600)
     max_duration: float = Field(default=180, ge=10, le=600)
     model: str = "Systran/faster-whisper-small"
     language: str = "id"
     analyze_seconds: float | None = Field(default=None, ge=10, le=7200)
     burn_subtitles: bool = True
-    crop_mode: Literal["center", "person"] = "center"
+    crop_mode: Literal["center", "person", "streamer"] = "center"
+    cam_corner: Literal["auto", "br", "bl", "tr", "tl"] = "auto"
+    caption_font_size: int = Field(default=30, ge=6, le=120)
+    caption_position: Literal["center", "bottom"] = "center"
+    caption_color: str = "#FFFFFF"
+    caption_font: Literal[
+        "DejaVu Sans", "DejaVu Serif", "Liberation Sans", "Liberation Serif", "Noto Sans"
+    ] = "DejaVu Sans"
+    caption_outline: float = Field(default=2.0, ge=0, le=8)
+    caption_outline_color: str = "#000000"
+    ai_enabled: bool = False
+    ai_base_url: str = ""
+    ai_model: str = ""
+    ai_api_key: str = ""
+
+    @field_validator("caption_color", "caption_outline_color")
+    @classmethod
+    def _validate_hex_color(cls, value: str) -> str:
+        candidate = value.strip()
+        if not re.fullmatch(r"#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})", candidate):
+            raise ValueError("color must be a hex value like #FFFFFF")
+        return candidate.upper()
 
 
 class ClipCandidate(BaseModel):
@@ -58,6 +84,9 @@ class ClipFile(BaseModel):
     name: str
     url: str
     size_bytes: int
+    thumbnail_url: str | None = None
+    thumbnail_prompt: str | None = None
+    social_caption: str | None = None
 
 
 class ClipJob(BaseModel):
@@ -82,7 +111,20 @@ app.add_middleware(
 )
 
 OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/outputs", StaticFiles(directory=OUTPUTS_DIR), name="outputs")
+
+
+def resolve_upload_path(token: str) -> Path | None:
+    # token is just the stored file name; keep it confined to UPLOADS_DIR.
+    name = Path(token).name
+    if not name:
+        return None
+    candidate = (UPLOADS_DIR / name).resolve()
+    root = UPLOADS_DIR.resolve()
+    if root != candidate.parent or not candidate.is_file():
+        return None
+    return candidate
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -109,9 +151,15 @@ def load_jobs() -> dict[str, ClipJob]:
 def save_jobs_unlocked() -> None:
     jobs_list = sorted(jobs.values(), key=lambda job: job.created_at, reverse=True)
     payload = [job.model_dump() for job in jobs_list]
-    temp_path = JOBS_PATH.with_suffix(".json.tmp")
-    temp_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
-    temp_path.replace(JOBS_PATH)
+    data = json.dumps(payload, indent=2, ensure_ascii=False)
+    try:
+        temp_path = JOBS_PATH.with_suffix(".json.tmp")
+        temp_path.write_text(data, encoding="utf-8")
+        temp_path.replace(JOBS_PATH)
+    except OSError:
+        # JOBS_PATH may be a bind-mounted file; atomic rename over it fails
+        # with Errno 16. Fall back to in-place write (single writer under lock).
+        JOBS_PATH.write_text(data, encoding="utf-8")
 
 
 def clear_outputs_dir() -> int:
@@ -131,8 +179,19 @@ def clear_outputs_dir() -> int:
     return removed
 
 
+def clear_uploads_dir() -> int:
+    UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    removed = 0
+    for item in UPLOADS_DIR.iterdir():
+        if item.is_file():
+            item.unlink()
+            removed += 1
+    return removed
+
+
 jobs: dict[str, ClipJob] = load_jobs()
 jobs_lock = threading.Lock()
+job_secrets: dict[str, str] = {}
 
 
 def clip_url(path: Path) -> str:
@@ -145,11 +204,21 @@ def discover_clips(started_at: float) -> list[ClipFile]:
     for path in OUTPUTS_DIR.rglob("clips/*.mp4"):
         if path.stat().st_mtime + 1 < started_at:
             continue
+        thumb_path = path.with_name(f"{path.stem}_thumb.jpg")
+        prompt_path = path.with_name(f"{path.stem}_thumb.txt")
+        caption_path = path.with_name(f"{path.stem}_caption.txt")
         clips.append(
             ClipFile(
                 name=path.name,
                 url=clip_url(path),
                 size_bytes=path.stat().st_size,
+                thumbnail_url=clip_url(thumb_path) if thumb_path.exists() else None,
+                thumbnail_prompt=(
+                    prompt_path.read_text(encoding="utf-8") if prompt_path.exists() else None
+                ),
+                social_caption=(
+                    caption_path.read_text(encoding="utf-8") if caption_path.exists() else None
+                ),
             )
         )
     clips.sort(key=lambda item: item.name)
@@ -201,6 +270,29 @@ def fetch_video_duration(url: str) -> float | None:
     return float(duration) if duration else None
 
 
+def probe_media_duration(path: Path) -> float | None:
+    try:
+        import cv2
+    except Exception:
+        return None
+    capture = cv2.VideoCapture(str(path.resolve()))
+    if not capture.isOpened():
+        return None
+    fps = capture.get(cv2.CAP_PROP_FPS)
+    frames = capture.get(cv2.CAP_PROP_FRAME_COUNT)
+    capture.release()
+    if fps and frames and fps > 0:
+        return float(frames) / float(fps)
+    return None
+
+
+def max_clips_for_duration(duration: float | None, min_duration: float) -> int | None:
+    # Guarantee target clips can fit without overlap inside 80% of the video.
+    if not duration or min_duration <= 0:
+        return None
+    return max(1, int((duration * CLIP_BUDGET_RATIO) // min_duration))
+
+
 def choose_auto_top(duration: float | None) -> int:
     if not duration:
         return MIN_AUTO_CLIPS + 3
@@ -214,11 +306,20 @@ def choose_auto_analyze_seconds(duration: float | None) -> float | None:
 
 
 def normalize_job_request(request: ClipJobRequest) -> ClipJobRequest:
-    duration = fetch_video_duration(request.url)
+    if request.source_file:
+        duration = probe_media_duration(Path(request.source_file))
+    else:
+        duration = fetch_video_duration(request.url)
     data = request.model_dump()
 
     if request.top is None:
         data["top"] = choose_auto_top(duration)
+
+    # Enforce: min_duration * target_clips <= 80% of the video length.
+    budget_cap = max_clips_for_duration(duration, request.min_duration)
+    if budget_cap is not None and data["top"] is not None:
+        data["top"] = max(1, min(int(data["top"]), budget_cap))
+
     if request.analyze_seconds is None:
         data["analyze_seconds"] = choose_auto_analyze_seconds(duration)
 
@@ -226,33 +327,57 @@ def normalize_job_request(request: ClipJobRequest) -> ClipJobRequest:
 
 
 def build_clipper_command(request: ClipJobRequest) -> list[str]:
-    command = [
-        sys.executable,
-        "clipper.py",
-        request.url,
-        "--top",
-        str(request.top or choose_auto_top(None)),
-        "--min",
-        str(request.min_duration),
-        "--max",
-        str(request.max_duration),
-        "--model",
-        request.model,
-        "--language",
-        request.language,
-    ]
+    command = [sys.executable, "clipper.py"]
+    if request.source_file:
+        command.extend(["--source-file", request.source_file])
+    else:
+        command.append(request.url)
+    command.extend(
+        [
+            "--top",
+            str(request.top or choose_auto_top(None)),
+            "--min",
+            str(request.min_duration),
+            "--max",
+            str(request.max_duration),
+            "--model",
+            request.model,
+            "--language",
+            request.language,
+        ]
+    )
 
     if request.analyze_seconds:
         command.extend(["--analyze-seconds", str(request.analyze_seconds)])
     if not request.burn_subtitles:
         command.append("--no-burn-subtitles")
     command.extend(["--crop-mode", request.crop_mode])
+    command.extend(["--cam-corner", request.cam_corner])
+    command.extend(["--caption-font-size", str(request.caption_font_size)])
+    command.extend(["--caption-position", request.caption_position])
+    command.extend(["--caption-color", request.caption_color])
+    command.extend(["--caption-font", request.caption_font])
+    command.extend(["--caption-outline", str(request.caption_outline)])
+    command.extend(["--caption-outline-color", request.caption_outline_color])
+
+    if request.ai_enabled:
+        command.append("--ai-enabled")
+        if request.ai_base_url:
+            command.extend(["--ai-base-url", request.ai_base_url])
+        if request.ai_model:
+            command.extend(["--ai-model", request.ai_model])
+        if request.ai_api_key:
+            command.extend(["--ai-api-key", request.ai_api_key])
     return command
 
 
 def run_job(job_id: str) -> None:
     with jobs_lock:
         request = jobs[job_id].request
+
+    secret = job_secrets.get(job_id)
+    if secret:
+        request = request.model_copy(update={"ai_api_key": secret})
 
     started_at = time.time()
     set_job(job_id, status="running", error=None)
@@ -296,6 +421,7 @@ def run_job(job_id: str) -> None:
             logs=logs[-120:],
             error=f"clipper.py exited with code {code}",
         )
+    job_secrets.pop(job_id, None)
 
 
 @app.get("/api/health")
@@ -303,13 +429,92 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+class ModelsQuery(BaseModel):
+    base_url: str = ""
+    api_key: str = ""
+
+
+@app.post("/api/models")
+def list_models(query: ModelsQuery) -> dict[str, list[str]]:
+    import urllib.request
+
+    base = query.base_url.strip()
+    if not base:
+        raise HTTPException(status_code=400, detail="base_url is required")
+
+    base = base.replace("localhost", "host.docker.internal").replace("127.0.0.1", "host.docker.internal")
+    url = base.rstrip("/") + "/models"
+    request = urllib.request.Request(url, method="GET")
+    request.add_header("Accept", "application/json")
+    if query.api_key.strip():
+        request.add_header("Authorization", f"Bearer {query.api_key.strip()}")
+
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Failed to reach LLM endpoint: {exc}")
+
+    data = payload.get("data") if isinstance(payload, dict) else None
+    models = [
+        item["id"]
+        for item in (data or [])
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    ]
+    models.sort()
+    return {"models": models}
+
+
+@app.post("/api/uploads")
+def upload_video(file: UploadFile = File(...)) -> dict[str, str | float | None]:
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix not in ALLOWED_UPLOAD_EXTENSIONS:
+        allowed = ", ".join(sorted(ALLOWED_UPLOAD_EXTENSIONS))
+        raise HTTPException(status_code=400, detail=f"Unsupported file type. Allowed: {allowed}")
+
+    stored_name = f"{uuid.uuid4().hex}{suffix}"
+    target = UPLOADS_DIR / stored_name
+    try:
+        with target.open("wb") as out:
+            shutil.copyfileobj(file.file, out)
+    finally:
+        file.file.close()
+
+    return {
+        "source_file": stored_name,
+        "original_name": file.filename or stored_name,
+        "duration": probe_media_duration(target),
+    }
+
+
+@app.get("/api/probe")
+def probe_url(url: str) -> dict[str, float | None]:
+    return {"duration": fetch_video_duration(url)}
+
+
 @app.post("/api/jobs", response_model=ClipJob)
 def create_job(request: ClipJobRequest) -> ClipJob:
     if request.max_duration <= request.min_duration:
         raise HTTPException(status_code=400, detail="max_duration must be greater than min_duration")
 
+    if not request.url and not request.source_file:
+        raise HTTPException(status_code=400, detail="Provide a YouTube URL or upload a video first")
+
+    if request.source_file:
+        upload_path = resolve_upload_path(request.source_file)
+        if upload_path is None:
+            raise HTTPException(status_code=400, detail="Uploaded video not found; upload it again")
+        request = request.model_copy(update={"source_file": str(upload_path)})
+
     request = normalize_job_request(request)
     job_id = uuid.uuid4().hex
+
+    # Keep the API key out of persisted state and API responses.
+    secret = request.ai_api_key
+    if secret:
+        job_secrets[job_id] = secret
+    request = request.model_copy(update={"ai_api_key": ""})
+
     job = ClipJob(
         id=job_id,
         status="queued",
@@ -339,8 +544,10 @@ def list_jobs() -> list[ClipJob]:
 def delete_all_jobs() -> dict[str, str | int]:
     with jobs_lock:
         jobs.clear()
+        job_secrets.clear()
         save_jobs_unlocked()
         removed_outputs = clear_outputs_dir()
+        clear_uploads_dir()
     return {"status": "ok", "removed_outputs": removed_outputs}
 
 

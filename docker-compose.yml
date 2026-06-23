@@ -7,7 +7,12 @@ services:
       - "${BACKEND_PORT:-8010}:8010"
     volumes:
       - ./backend/outputs:/app/outputs
+      - ./backend/uploads:/app/uploads
       - ./backend/jobs.json:/app/jobs.json
+    environment:
+      IN_DOCKER: "1"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
   frontend:

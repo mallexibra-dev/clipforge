@@ -2,8 +2,10 @@ faster-whisper==1.2.1
 fastapi==0.125.0
 imageio-ffmpeg==0.6.0
 pydantic==2.13.4
+python-multipart==0.0.20
 python-slugify==8.0.4
 rich==15.0.0
 opencv-python>=4.10.0
 uvicorn==0.38.0
 yt-dlp==2026.6.9
+pytest==8.3.4

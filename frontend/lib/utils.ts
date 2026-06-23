@@ -41,3 +41,8 @@ export async function handleCopyTitle(title: string) {
   await navigator.clipboard.writeText(title);
   toast.success("Judul klip berhasil disalin");
 }
+
+export async function handleCopyText(text: string, message = "Berhasil disalin") {
+  await navigator.clipboard.writeText(text);
+  toast.success(message);
+}
