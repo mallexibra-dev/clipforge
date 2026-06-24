@@ -68,6 +68,7 @@ export default function HomePage() {
   const [aiBaseUrl, setAiBaseUrl] = useState(DEFAULT_AI_BASE_URL);
   const [aiModel, setAiModel] = useState(DEFAULT_AI_MODEL);
   const [aiApiKey, setAiApiKey] = useState("");
+  const [requiredHashtags, setRequiredHashtags] = useState("");
   const [aiModels, setAiModels] = useState<string[]>([]);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
   const [job, setJob] = useState<ClipJob | null>(null);
@@ -217,6 +218,10 @@ export default function HomePage() {
           caption_font: captionFont,
           caption_outline: captionOutline,
           caption_outline_color: captionOutlineColor,
+          required_hashtags: requiredHashtags
+            .split(",")
+            .map((tag) => tag.trim())
+            .filter(Boolean),
           ai_enabled: aiEnabled,
           ai_base_url: aiBaseUrl.trim(),
           ai_model: aiModel.trim(),
@@ -253,6 +258,7 @@ export default function HomePage() {
     loadJobs,
     maxDuration,
     minDuration,
+    requiredHashtags,
     sourceMode,
     targetClips,
     uploadToken,
@@ -317,6 +323,8 @@ export default function HomePage() {
           aiModels={aiModels}
           isLoadingModels={isLoadingModels}
           onLoadModels={handleLoadModels}
+          requiredHashtags={requiredHashtags}
+          onRequiredHashtagsChange={setRequiredHashtags}
           onCropModeChange={setCropMode}
           onMaxDurationChange={setMaxDuration}
           onMinDurationChange={setMinDuration}

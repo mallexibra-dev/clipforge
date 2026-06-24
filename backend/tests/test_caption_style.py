@@ -25,7 +25,8 @@ def test_hex_to_ass_color_invalid_falls_back():
 
 def test_build_subtitle_style_center_default():
     style = build_subtitle_style(CaptionStyle())
-    assert "Alignment=5" in style  # middle-center
+    # ASS alignment 10 is the true vertical middle (5 is top-center in libass).
+    assert "Alignment=10" in style
     assert "FontName=DejaVu Sans" in style
     assert "FontSize=30" in style
 
@@ -33,7 +34,7 @@ def test_build_subtitle_style_center_default():
 def test_build_subtitle_style_bottom():
     style = build_subtitle_style(CaptionStyle(position="bottom"))
     assert "Alignment=2" in style
-    assert "MarginV=90" in style
+    assert "MarginV=24" in style
 
 
 def test_build_subtitle_style_font_whitelist():

@@ -836,11 +836,15 @@ def build_subtitle_style(caption: CaptionStyle) -> str:
     outline_color = _hex_to_ass_color(caption.outline_color)
     outline = max(0.0, min(8.0, caption.outline_width))
     font_name = AVAILABLE_FONTS.get(caption.font_family, DEFAULT_FONT)
+    # libass margins use the default script resolution (PlayResY=288), so these
+    # values are in ~288-unit space, not raw pixels of the 1920px frame.
+    # Alignment: 2 = bottom-center, 10 = middle-center (ASS numbering, where 5
+    # is actually top-center, not the visual middle).
     if caption.position == "bottom":
         alignment = 2
-        margin_v = 90
+        margin_v = 24
     else:
-        alignment = 5
+        alignment = 10
         margin_v = 0
     return (
         f"FontName={font_name},FontSize={font_size},Bold=1,PrimaryColour={primary},"
@@ -949,7 +953,14 @@ SOCIAL_CAPTION_SYSTEM_PROMPT = (
 )
 
 
-def generate_social_caption(clip: ClipCandidate, config: AIConfig) -> str | None:
+def _normalize_hashtag(tag: str) -> str:
+    cleaned = tag.strip().lstrip("#").strip()
+    return f"#{cleaned}" if cleaned else ""
+
+
+def generate_social_caption(
+    clip: ClipCandidate, config: AIConfig, required_hashtags: list[str] | None = None
+) -> str | None:
     if not config.enabled or not config.base_url or not config.model:
         return None
 
@@ -981,15 +992,20 @@ def generate_social_caption(clip: ClipCandidate, config: AIConfig) -> str | None
     if not isinstance(caption, str) or not caption.strip():
         return None
     text = caption.strip()
-    hashtags = parsed.get("hashtags")
-    if isinstance(hashtags, list):
-        tags = " ".join(
-            tag.strip() if str(tag).startswith("#") else f"#{str(tag).strip()}"
-            for tag in hashtags
-            if str(tag).strip()
-        )
-        if tags:
-            text = f"{text}\n\n{tags}"
+
+    # Required hashtags always come first, then the AI-generated ones (deduped,
+    # case-insensitive). Required tags are guaranteed to be present.
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for raw in list(required_hashtags or []) + (
+        parsed.get("hashtags") if isinstance(parsed.get("hashtags"), list) else []
+    ):
+        tag = _normalize_hashtag(str(raw))
+        if tag and tag.lower() not in seen:
+            seen.add(tag.lower())
+            ordered.append(tag)
+    if ordered:
+        text = f"{text}\n\n{' '.join(ordered)}"
     return text[:2000]
 
 
@@ -1003,6 +1019,7 @@ def export_clip(
     caption: CaptionStyle | None = None,
     ai_config: AIConfig | None = None,
     cam_corner: str = "auto",
+    required_hashtags: list[str] | None = None,
 ) -> Path:
     clips_dir.mkdir(parents=True, exist_ok=True)
     base_name = f"clip_{clip.index:02}_{slugify(clip.title)[:42] or 'auto'}"
@@ -1140,7 +1157,7 @@ def export_clip(
                 encoding="utf-8",
             )
 
-    social_caption = generate_social_caption(clip, ai_config or AIConfig())
+    social_caption = generate_social_caption(clip, ai_config or AIConfig(), required_hashtags)
     if social_caption:
         (clips_dir / f"{base_name}_caption.txt").write_text(social_caption + "\n", encoding="utf-8")
 
@@ -1173,13 +1190,9 @@ def prepare_uploaded_source(source_file: Path, work_dir: Path) -> tuple[Path, di
         raise FileNotFoundError(f"Uploaded source not found: {source_file}")
 
     work_dir.mkdir(parents=True, exist_ok=True)
+    # Read the upload in place instead of copying it into the work dir; a large
+    # video would otherwise be stored twice (uploads/ and outputs/).
     suffix = source_file.suffix or ".mp4"
-    target = work_dir / f"source{suffix}"
-    if source_file.resolve() != target.resolve():
-        import shutil
-
-        shutil.copy2(source_file, target)
-
     metadata = {
         "id": source_file.stem,
         "title": source_file.stem,
@@ -1188,7 +1201,25 @@ def prepare_uploaded_source(source_file: Path, work_dir: Path) -> tuple[Path, di
         "webpage_url": None,
         "ext": suffix.lstrip("."),
     }
-    return target, metadata
+    return source_file, metadata
+
+
+def cleanup_intermediate(work_dir: Path, source_video: Path) -> None:
+    # Once the clips are exported, the source video and the extracted audio are
+    # dead weight. Delete them so a single job doesn't keep gigabytes around.
+    # Only touch files inside work_dir (an uploaded source lives elsewhere).
+    removed = 0
+    for pattern in ("source.*", "audio*.wav"):
+        for item in work_dir.glob(pattern):
+            try:
+                if item.resolve() == source_video.resolve() and source_video.parent != work_dir:
+                    continue
+                item.unlink()
+                removed += 1
+            except OSError:
+                pass
+    if removed:
+        console.print(f"[green]Cleaned up[/green] {removed} intermediate file(s).")
 
 
 def parse_args() -> argparse.Namespace:
@@ -1233,6 +1264,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--caption-font", default=DEFAULT_FONT, help="Burned caption font family")
     parser.add_argument("--caption-outline", type=float, default=2.0, help="Caption border/outline width (0-8)")
     parser.add_argument("--caption-outline-color", default="#000000", help="Caption border color, hex")
+    parser.add_argument(
+        "--keep-intermediate",
+        action="store_true",
+        help="Keep the downloaded source video and extracted audio after exporting clips",
+    )
+    parser.add_argument(
+        "--required-hashtags",
+        default="",
+        help="Comma-separated hashtags always appended to generated captions, e.g. clipforge,viral",
+    )
     return parser.parse_args()
 
 
@@ -1327,6 +1368,8 @@ def main() -> int:
         outline_color=args.caption_outline_color,
     )
 
+    required_hashtags = [tag for tag in args.required_hashtags.split(",") if tag.strip()]
+
     console.print("[bold]Exporting vertical clips...[/bold]")
     clips_dir = work_dir / "clips"
     exported: list[Path] = []
@@ -1343,8 +1386,12 @@ def main() -> int:
                 caption_style,
                 ai_config,
                 args.cam_corner,
+                required_hashtags,
             )
         )
+
+    if not args.keep_intermediate:
+        cleanup_intermediate(work_dir, final_video_path)
 
     console.print("[green]Done.[/green] Exported:")
     for path in exported:

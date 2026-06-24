@@ -47,6 +47,8 @@ type ControlPanelProps = {
   aiModels: string[];
   isLoadingModels: boolean;
   onLoadModels: () => void;
+  requiredHashtags: string;
+  onRequiredHashtagsChange: (value: string) => void;
   onCropModeChange: (mode: CropMode) => void;
   onMaxDurationChange: (value: number) => void;
   onMinDurationChange: (value: number) => void;
@@ -93,6 +95,8 @@ export function ControlPanel({
   aiModels,
   isLoadingModels,
   onLoadModels,
+  requiredHashtags,
+  onRequiredHashtagsChange,
   onCropModeChange,
   onMaxDurationChange,
   onMinDurationChange,
@@ -461,6 +465,17 @@ export function ControlPanel({
                   {aiModels.length > 0 ? "Refresh" : "Muat Model"}
                 </button>
               </div>
+            </label>
+            <label className="field wide">
+              <span>Hashtag Wajib (opsional)</span>
+              <input
+                value={requiredHashtags}
+                onChange={(event) => onRequiredHashtagsChange(event.target.value)}
+                placeholder="clipforge, viral, fyp"
+              />
+              <p className="field-help">
+                Hashtag ini selalu ditambahkan ke caption yang digenerate. Pisahkan dengan koma.
+              </p>
             </label>
           </div>
         ) : null}

@@ -80,6 +80,7 @@ export type CreateClipJobInput = {
   caption_font?: CaptionFont;
   caption_outline?: number;
   caption_outline_color?: string;
+  required_hashtags?: string[];
   ai_enabled?: boolean;
   ai_base_url?: string;
   ai_model?: string;

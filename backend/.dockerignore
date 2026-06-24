@@ -1,6 +1,9 @@
 .venv
 __pycache__
 outputs
+uploads
+tests
 jobs.json
 *.pyc
 .gitignore
+.pytest_cache

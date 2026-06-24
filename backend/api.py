@@ -55,6 +55,7 @@ class ClipJobRequest(BaseModel):
     ] = "DejaVu Sans"
     caption_outline: float = Field(default=2.0, ge=0, le=8)
     caption_outline_color: str = "#000000"
+    required_hashtags: list[str] = Field(default_factory=list)
     ai_enabled: bool = False
     ai_base_url: str = ""
     ai_model: str = ""
@@ -359,6 +360,10 @@ def build_clipper_command(request: ClipJobRequest) -> list[str]:
     command.extend(["--caption-font", request.caption_font])
     command.extend(["--caption-outline", str(request.caption_outline)])
     command.extend(["--caption-outline-color", request.caption_outline_color])
+    if request.required_hashtags:
+        cleaned = [tag.strip().lstrip("#") for tag in request.required_hashtags if tag.strip()]
+        if cleaned:
+            command.extend(["--required-hashtags", ",".join(cleaned)])
 
     if request.ai_enabled:
         command.append("--ai-enabled")
@@ -422,6 +427,16 @@ def run_job(job_id: str) -> None:
             error=f"clipper.py exited with code {code}",
         )
     job_secrets.pop(job_id, None)
+
+    # An uploaded source is only needed during processing; remove it afterwards
+    # so large videos don't accumulate in uploads/.
+    if request.source_file:
+        upload_path = resolve_upload_path(request.source_file)
+        if upload_path is not None:
+            try:
+                upload_path.unlink()
+            except OSError:
+                pass
 
 
 @app.get("/api/health")
