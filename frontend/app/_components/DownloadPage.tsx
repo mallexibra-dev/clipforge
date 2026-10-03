@@ -105,7 +105,16 @@ export function DownloadPage() {
           <h2>Unduh Video YouTube</h2>
         </div>
 
-        <div className="downloadOptions">
+        <div className="downloadForm">
+          <label className="field">
+            <span>Link Video YouTube</span>
+            <input
+              value={url}
+              onChange={(event) => setUrl(event.target.value)}
+              placeholder="https://www.youtube.com/watch?v=..."
+            />
+          </label>
+
           <div className="segmentedField">
             <span>Jenis Media</span>
             <div className="segmentedControl" role="group" aria-label="Jenis media">
@@ -160,19 +169,11 @@ export function DownloadPage() {
           )}
         </div>
 
-        <label className="field wide">
-          <span>Link Video YouTube</span>
-          <input
-            value={url}
-            onChange={(event) => setUrl(event.target.value)}
-            placeholder="https://www.youtube.com/watch?v=..."
-          />
-          <p className="field-help">
-            {mediaType === "video"
-              ? "Video digabung ke MP4 pada resolusi maksimum yang dipilih."
-              : "Audio diekstrak pada kualitas terbaik."}
-          </p>
-        </label>
+        <p className="field-help downloadFormHelp">
+          {mediaType === "video"
+            ? "Video digabung ke MP4 pada resolusi maksimum yang dipilih."
+            : "Audio diekstrak pada kualitas terbaik."}
+        </p>
 
         {error ? <p className="error">{error}</p> : null}
 
