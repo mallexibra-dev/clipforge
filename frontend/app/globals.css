@@ -30,6 +30,11 @@ html, body {
   letter-spacing: -0.01em;
 }
 
+body {
+  display: flex;
+  flex-direction: column;
+}
+
 button, input {
   font: inherit;
   transition: all 0.2s ease-in-out;
@@ -42,6 +47,8 @@ a {
 }
 
 .shell {
+  flex: 1 0 auto;
+  width: 100%;
   max-width: 1280px;
   margin: 0 auto;
   padding: 32px 24px;
