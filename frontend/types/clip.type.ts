@@ -86,3 +86,28 @@ export type CreateClipJobInput = {
   ai_model?: string;
   ai_api_key?: string;
 };
+
+export type DownloadMediaType = "video" | "audio";
+export type DownloadResolution = "best" | "1080" | "720" | "480" | "360";
+export type DownloadAudioFormat = "mp3" | "m4a" | "opus" | "wav";
+
+export type DownloadRequest = {
+  url: string;
+  media_type: DownloadMediaType;
+  resolution?: DownloadResolution;
+  audio_format?: DownloadAudioFormat;
+};
+
+export type DownloadJob = {
+  id: string;
+  status: JobStatus;
+  request: DownloadRequest;
+  title: string | null;
+  file_url: string | null;
+  file_size: number | null;
+  progress: number | null;
+  logs: string[];
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+};

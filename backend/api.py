@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import imageio_ffmpeg
 import json
 import re
 import shutil
@@ -12,10 +13,11 @@ from math import ceil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 from yt_dlp import YoutubeDL
@@ -24,7 +26,9 @@ from yt_dlp import YoutubeDL
 BASE_DIR = Path(__file__).resolve().parent
 OUTPUTS_DIR = BASE_DIR / "outputs"
 UPLOADS_DIR = BASE_DIR / "uploads"
+DOWNLOADS_DIR = OUTPUTS_DIR / "downloads"
 JOBS_PATH = BASE_DIR / "jobs.json"
+DOWNLOADS_PATH = BASE_DIR / "downloads.json"
 ALLOWED_UPLOAD_EXTENSIONS = {".mp4", ".mov", ".mkv", ".webm", ".m4v", ".avi"}
 SECONDS_PER_TARGET_CLIP = 360
 MIN_AUTO_CLIPS = 2
@@ -102,6 +106,34 @@ class ClipJob(BaseModel):
     error: str | None = None
 
 
+class DownloadRequest(BaseModel):
+    url: str
+    media_type: Literal["video", "audio"] = "video"
+    resolution: Literal["best", "1080", "720", "480", "360"] = "best"
+    audio_format: Literal["mp3", "m4a", "opus", "wav"] = "mp3"
+
+    @field_validator("url")
+    @classmethod
+    def _require_url(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("url is required")
+        return value.strip()
+
+
+class DownloadJob(BaseModel):
+    id: str
+    status: Literal["queued", "running", "completed", "failed"]
+    request: DownloadRequest
+    title: str | None = None
+    file_url: str | None = None
+    file_size: int | None = None
+    progress: float | None = None
+    logs: list[str] = []
+    error: str | None = None
+    created_at: str
+    updated_at: str
+
+
 app = FastAPI(title="ClipForge API", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
@@ -113,6 +145,7 @@ app.add_middleware(
 
 OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/outputs", StaticFiles(directory=OUTPUTS_DIR), name="outputs")
 
 
@@ -573,3 +606,212 @@ def get_job(job_id: str) -> ClipJob:
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     return job
+
+
+def load_downloads() -> dict[str, DownloadJob]:
+    if not DOWNLOADS_PATH.exists():
+        return {}
+
+    payload = json.loads(DOWNLOADS_PATH.read_text(encoding="utf-8"))
+    loaded: dict[str, DownloadJob] = {}
+    for item in payload:
+        job = DownloadJob(**item)
+        if job.status in {"queued", "running"}:
+            data = job.model_dump()
+            data["status"] = "failed"
+            data["updated_at"] = now_iso()
+            data["error"] = "Backend restarted before this download finished"
+            job = DownloadJob(**data)
+        loaded[job.id] = job
+    return loaded
+
+
+def save_downloads_unlocked() -> None:
+    payload = [
+        job.model_dump()
+        for job in sorted(downloads.values(), key=lambda item: item.created_at, reverse=True)
+    ]
+    data = json.dumps(payload, indent=2, ensure_ascii=False)
+    try:
+        temp_path = DOWNLOADS_PATH.with_suffix(".json.tmp")
+        temp_path.write_text(data, encoding="utf-8")
+        temp_path.replace(DOWNLOADS_PATH)
+    except OSError:
+        DOWNLOADS_PATH.write_text(data, encoding="utf-8")
+
+
+downloads: dict[str, DownloadJob] = load_downloads()
+downloads_lock = threading.Lock()
+
+
+def set_download(job_id: str, **updates) -> None:
+    with downloads_lock:
+        job = downloads[job_id]
+        data = job.model_dump()
+        data.update(updates)
+        data["updated_at"] = now_iso()
+        downloads[job_id] = DownloadJob(**data)
+        save_downloads_unlocked()
+
+
+def build_ytdlp_command(request: DownloadRequest) -> list[str]:
+    output_template = DOWNLOADS_DIR / "%(title).100s [%(id)s].%(ext)s"
+    command = [
+        sys.executable,
+        "-m",
+        "yt_dlp",
+        "--no-playlist",
+        "--no-warnings",
+        "--newline",
+        "--ffmpeg-location",
+        imageio_ffmpeg.get_ffmpeg_exe(),
+        "-o",
+        str(output_template),
+    ]
+    if request.media_type == "audio":
+        command.extend(["-f", "ba/b", "-x", "--audio-format", request.audio_format, "--audio-quality", "0"])
+    else:
+        if request.resolution == "best":
+            command.extend(["-f", "bv*+ba/b"])
+        else:
+            command.extend(["-f", f"bv*[height<={request.resolution}]+ba/b[height<={request.resolution}]"])
+        command.extend(["--merge-output-format", "mp4"])
+    command.append(request.url)
+    return command
+
+
+def discover_download_file(started_at: float) -> Path | None:
+    if not DOWNLOADS_DIR.exists():
+        return None
+    candidates = [
+        path
+        for path in DOWNLOADS_DIR.iterdir()
+        if path.is_file() and path.stat().st_mtime + 1 >= started_at
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda path: path.stat().st_mtime)
+
+
+DOWNLOAD_PROGRESS_PATTERN = re.compile(r"\[download\]\s+([\d.]+)%")
+
+
+def run_download(job_id: str) -> None:
+    with downloads_lock:
+        request = downloads[job_id].request
+
+    started_at = time.time()
+    set_download(job_id, status="running", error=None, progress=0.0)
+    command = build_ytdlp_command(request)
+
+    process = subprocess.Popen(
+        command,
+        cwd=BASE_DIR,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        bufsize=1,
+    )
+
+    logs: list[str] = []
+    progress = 0.0
+    assert process.stdout is not None
+    for line in process.stdout:
+        cleaned = line.rstrip()
+        if not cleaned:
+            continue
+        logs.append(cleaned)
+        match = DOWNLOAD_PROGRESS_PATTERN.match(cleaned)
+        if match:
+            progress = float(match.group(1))
+        set_download(job_id, logs=logs[-120:], progress=progress)
+
+    code = process.wait()
+    if code != 0:
+        set_download(job_id, status="failed", logs=logs[-120:], error=f"yt-dlp exited with code {code}")
+        return
+
+    file_path = discover_download_file(started_at)
+    if file_path is None:
+        set_download(
+            job_id,
+            status="failed",
+            logs=logs[-120:],
+            error="Download finished but no output file was found",
+        )
+        return
+
+    title = re.sub(r" \[[^\]]+\]$", "", file_path.stem)
+    set_download(
+        job_id,
+        status="completed",
+        progress=100.0,
+        title=title,
+        file_url=clip_url(file_path),
+        file_size=file_path.stat().st_size,
+        logs=logs[-120:],
+    )
+
+
+@app.post("/api/downloads", response_model=DownloadJob)
+def create_download(request: DownloadRequest) -> DownloadJob:
+    job_id = uuid.uuid4().hex
+    job = DownloadJob(
+        id=job_id,
+        status="queued",
+        request=request,
+        created_at=now_iso(),
+        updated_at=now_iso(),
+    )
+    with downloads_lock:
+        downloads[job_id] = job
+        save_downloads_unlocked()
+    threading.Thread(target=run_download, args=(job_id,), daemon=True).start()
+    return job
+
+
+@app.get("/api/downloads", response_model=list[DownloadJob])
+def list_downloads() -> list[DownloadJob]:
+    with downloads_lock:
+        return sorted(downloads.values(), key=lambda item: item.created_at, reverse=True)
+
+
+@app.get("/api/downloads/{job_id}", response_model=DownloadJob)
+def get_download(job_id: str) -> DownloadJob:
+    with downloads_lock:
+        job = downloads.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Download not found")
+    return job
+
+
+@app.get("/api/downloads/{job_id}/file")
+def get_download_file(job_id: str) -> FileResponse:
+    with downloads_lock:
+        job = downloads.get(job_id)
+    if not job or job.status != "completed" or not job.file_url:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    relative = unquote(job.file_url.removeprefix("/outputs/"))
+    file_path = (OUTPUTS_DIR / relative).resolve()
+    if OUTPUTS_DIR.resolve() not in file_path.parents or not file_path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(file_path, filename=re.sub(r" \[[^\]]+\](\.[^.]+)$", r"\1", file_path.name))
+
+
+@app.delete("/api/downloads")
+def delete_downloads() -> dict[str, str | int]:
+    with downloads_lock:
+        removed = len(downloads)
+        downloads.clear()
+        save_downloads_unlocked()
+
+    removed_files = 0
+    if DOWNLOADS_DIR.exists():
+        for item in DOWNLOADS_DIR.iterdir():
+            if item.is_file():
+                item.unlink()
+                removed_files += 1
+    return {"status": "ok", "removed_downloads": removed, "removed_files": removed_files}

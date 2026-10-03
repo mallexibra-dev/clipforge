@@ -1,4 +1,9 @@
-import type { ClipJob, CreateClipJobInput } from "../types/clip.type";
+import type {
+  ClipJob,
+  CreateClipJobInput,
+  DownloadJob,
+  DownloadRequest,
+} from "../types/clip.type";
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8010";
 const CLIENT_API_BASE = "";
@@ -86,3 +91,26 @@ export const createJob = async (input: CreateClipJobInput) => {
 };
 
 export const getOutputUrl = (path: string) => `${API_BASE}${path}`;
+
+export const createDownload = async (input: DownloadRequest) => {
+  const response = await fetch(`${CLIENT_API_BASE}/api/downloads`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(detail || "Failed to create download");
+  }
+  return (await response.json()) as DownloadJob;
+};
+
+export const fetchDownload = async (jobId: string) => {
+  const response = await fetch(`${CLIENT_API_BASE}/api/downloads/${jobId}`, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error("Failed to load download");
+  }
+  return (await response.json()) as DownloadJob;
+};
+
+export const getDownloadFileUrl = (jobId: string) => `${API_BASE}/api/downloads/${jobId}/file`;

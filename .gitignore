@@ -7,6 +7,8 @@ backend/.venv/
 backend/outputs/
 backend/jobs.json
 backend/jobs.json.tmp
+backend/downloads.json
+backend/downloads.json.tmp
 backend/__pycache__/
 backend/**/*.py[cod]
 
