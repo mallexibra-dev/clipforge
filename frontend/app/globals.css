@@ -68,6 +68,18 @@ a {
   gap: 12px;
 }
 
+.topbarActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pageToggle :is(button, a) {
+  min-height: 34px;
+  min-width: 96px;
+  padding: 0 14px;
+}
+
 .brandMark {
   display: block;
   width: 40px;
@@ -225,7 +237,9 @@ h2 {
   border-radius: var(--radius-sm);
 }
 
-.segmentedControl button {
+.segmentedControl :is(button, a) {
+  display: grid;
+  place-items: center;
   min-height: 38px;
   border: 1px solid transparent;
   border-radius: 6px;
@@ -234,26 +248,27 @@ h2 {
   cursor: pointer;
   font-size: 13px;
   font-weight: 700;
+  text-decoration: none;
 }
 
-.segmentedControl button:hover {
+.segmentedControl :is(button, a):hover {
   background: rgba(255, 255, 255, 0.65);
   color: var(--text-primary);
 }
 
-.segmentedControl button:focus-visible {
+.segmentedControl :is(button, a):focus-visible {
   outline: 2px solid rgba(37, 99, 235, 0.35);
   outline-offset: 2px;
 }
 
-.segmentedControl button.active {
+.segmentedControl :is(button, a).active {
   background: linear-gradient(180deg, #60A5FA 0%, #3B82F6 100%);
   border-color: #3B82F6;
   color: #FFFFFF;
   box-shadow: 0 4px 10px rgba(37, 99, 235, 0.18);
 }
 
-.segmentedControl button.active:hover {
+.segmentedControl :is(button, a).active:hover {
   background: linear-gradient(180deg, #3B82F6 0%, var(--primary) 100%);
   border-color: var(--primary);
   color: #FFFFFF;
@@ -871,10 +886,24 @@ h2 {
     line-height: 1.35;
   }
 
+  .topbar {
+    flex-wrap: wrap;
+  }
+
   .topbar .iconButton {
     width: 36px;
     height: 36px;
     flex: 0 0 auto;
+  }
+
+  .pageToggle {
+    order: 3;
+    width: 100%;
+  }
+
+  .pageToggle :is(button, a) {
+    min-width: 0;
+    padding: 0 10px;
   }
 
   .gridFields {
@@ -895,6 +924,49 @@ h2 {
   border: 1px solid rgba(148, 163, 184, 0.18);
   border-radius: 14px;
   background: rgba(99, 102, 241, 0.06);
+}
+
+.downloadPage {
+  display: flex;
+  justify-content: center;
+  padding: 24px 0 48px;
+}
+
+.downloadEmpty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: min(520px, 100%);
+  padding: 48px 24px;
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
+
+.downloadIcon {
+  display: inline-grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: rgba(37, 99, 235, 0.08);
+  color: var(--primary);
+}
+
+.downloadEmpty h2 {
+  margin: 4px 0 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.downloadEmpty p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-secondary);
 }
 
 .aiToggle {

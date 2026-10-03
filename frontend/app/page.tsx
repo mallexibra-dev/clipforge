@@ -41,10 +41,9 @@ import type {
 import { ControlPanel } from "./_components/ControlPanel";
 import { DeleteAllToast } from "./_components/DeleteAllToast";
 import { HistorySection } from "./_components/HistorySection";
+import { REFRESH_EVENT } from "./_components/Topbar";
 import { ResultsSection } from "./_components/ResultsSection";
-import { SiteFooter } from "./_components/SiteFooter";
 import { StatusPanel } from "./_components/StatusPanel";
-import { Topbar } from "./_components/Topbar";
 
 type AiSettings = {
   enabled?: boolean;
@@ -132,6 +131,14 @@ export default function HomePage() {
 
   useEffect(() => {
     loadJobs().catch(() => undefined);
+  }, [loadJobs]);
+
+  useEffect(() => {
+    const refresh = () => {
+      loadJobs().catch(() => undefined);
+    };
+    window.addEventListener(REFRESH_EVENT, refresh);
+    return () => window.removeEventListener(REFRESH_EVENT, refresh);
   }, [loadJobs]);
 
   useEffect(() => {
@@ -318,9 +325,7 @@ export default function HomePage() {
   }, [handleDeleteAllConfirmed]);
 
   return (
-    <main className="shell">
-      <Topbar onRefresh={loadJobs} />
-
+    <main>
       <section className="workspace">
         <ControlPanel
           cropMode={cropMode}
@@ -380,7 +385,6 @@ export default function HomePage() {
 
       <ResultsSection clips={job?.clips ?? []} />
       <HistorySection jobs={jobs} onDeleteAll={handleDeleteAll} onSelectJob={setJob} />
-      <SiteFooter />
     </main>
   );
 }
