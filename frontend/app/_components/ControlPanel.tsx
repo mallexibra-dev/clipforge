@@ -1,5 +1,13 @@
 import { Link2, Loader2, Play, RefreshCw, Scissors, Sparkles, Type, Upload } from "lucide-react";
-import { CAPTION_FONT_SIZE_MAX, CAPTION_FONT_SIZE_MIN, CAPTION_FONTS } from "../../lib/constants";
+import {
+  CAPTION_FONT_SIZE_MAX,
+  CAPTION_FONT_SIZE_MIN,
+  CAPTION_FONTS,
+  MAX_DURATION,
+  MIN_DURATION,
+  MIN_DURATION_MAX,
+  clampDurations,
+} from "../../lib/constants";
 import type { CamCorner, CaptionFont, CaptionPosition, CropMode, SourceMode } from "../../types/clip.type";
 import { CaptionPreview } from "./CaptionPreview";
 
@@ -182,24 +190,36 @@ export function ControlPanel({
 
       <div className="gridFields">
         <label className="field">
-          <span>Durasi Minimum</span>
+          <span>Durasi Minimum (detik)</span>
           <input
-            min={5}
-            max={600}
+            min={MIN_DURATION}
+            max={MIN_DURATION_MAX}
             type="number"
             value={minDuration}
             onChange={(event) => onMinDurationChange(Number(event.target.value))}
+            onBlur={() => {
+              const [nextMin, nextMax] = clampDurations(minDuration, maxDuration);
+              onMinDurationChange(nextMin);
+              if (nextMax !== maxDuration) onMaxDurationChange(nextMax);
+            }}
           />
+          <p className="field-help">Minimal 1 menit (60 detik).</p>
         </label>
         <label className="field">
-          <span>Durasi Maksimum</span>
+          <span>Durasi Maksimum (detik)</span>
           <input
-            min={10}
-            max={600}
+            min={MIN_DURATION + 5}
+            max={MAX_DURATION}
             type="number"
             value={maxDuration}
             onChange={(event) => onMaxDurationChange(Number(event.target.value))}
+            onBlur={() => {
+              const [nextMin, nextMax] = clampDurations(minDuration, maxDuration);
+              if (nextMin !== minDuration) onMinDurationChange(nextMin);
+              onMaxDurationChange(nextMax);
+            }}
           />
+          <p className="field-help">Harus lebih besar dari durasi minimum.</p>
         </label>
       </div>
 
@@ -409,7 +429,9 @@ export function ControlPanel({
           />
         </label>
         <p className="field-help">
-          LLM menilai setiap kandidat dan memilih bagian paling kuat untuk dijadikan klip.
+          LLM menilai setiap kandidat dari transkrip (teks saja, tanpa melihat video) dan memilih
+          bagian dengan hook paling kuat untuk dijadikan klip. Pengaturan tersimpan otomatis di
+          browser ini.
         </p>
 
         {aiEnabled ? (
@@ -419,7 +441,7 @@ export function ControlPanel({
               <input
                 value={aiBaseUrl}
                 onChange={(event) => onAiBaseUrlChange(event.target.value)}
-                placeholder="http://localhost:20128/v1"
+                placeholder="https://api.z.ai/api/coding/paas/v4"
               />
             </label>
             <label className="field wide">
@@ -428,7 +450,7 @@ export function ControlPanel({
                 type="password"
                 value={aiApiKey}
                 onChange={(event) => onAiApiKeyChange(event.target.value)}
-                placeholder="sk-..."
+                placeholder="Tempel API key z.ai di sini (tersimpan di browser)"
                 autoComplete="off"
               />
             </label>
@@ -452,7 +474,7 @@ export function ControlPanel({
                   <input
                     value={aiModel}
                     onChange={(event) => onAiModelChange(event.target.value)}
-                    placeholder="tr/MiniMax-M3"
+                    placeholder="glm-4.6"
                   />
                 )}
                 <button

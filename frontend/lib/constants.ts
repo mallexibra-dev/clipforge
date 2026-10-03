@@ -1,12 +1,23 @@
 import { CheckCircle2, Clock3, Loader2, XCircle, type LucideIcon } from "lucide-react";
 import type { JobStatus } from "../types/clip.type";
 
-export const DEFAULT_MIN_DURATION = 35;
+export const DEFAULT_MIN_DURATION = 60;
 export const DEFAULT_MAX_DURATION = 180;
+export const MIN_DURATION = 60;
+export const MIN_DURATION_MAX = 600;
+export const MAX_DURATION = 600;
+
+// Keep the clip-length window inside backend limits; max stays strictly above min.
+export const clampDurations = (min: number, max: number): [number, number] => {
+  const nextMin = Math.min(MAX_DURATION, Math.max(MIN_DURATION, Math.round(min || MIN_DURATION)));
+  const nextMax = Math.min(MAX_DURATION, Math.max(nextMin + 5, Math.round(max || nextMin + 5)));
+  return [nextMin, nextMax];
+};
 export const DEFAULT_MODEL = "Systran/faster-whisper-small";
 export const DEFAULT_LANGUAGE = "id";
-export const DEFAULT_AI_BASE_URL = "http://localhost:20128/v1";
-export const DEFAULT_AI_MODEL = "tr/MiniMax-M3";
+export const DEFAULT_AI_BASE_URL = "https://api.z.ai/api/coding/paas/v4";
+export const DEFAULT_AI_MODEL = "glm-4.6";
+export const AI_SETTINGS_STORAGE_KEY = "clipforge.aiSettings";
 export const DEFAULT_CAPTION_FONT_SIZE = 30;
 export const DEFAULT_CAPTION_POSITION = "center";
 export const DEFAULT_CAPTION_COLOR = "#FFFFFF";

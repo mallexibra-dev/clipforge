@@ -14,6 +14,7 @@ frontend/.next/
 frontend/node_modules/
 frontend/out/
 frontend/next-env.d.ts
+frontend/tsconfig.tsbuildinfo
 frontend/.env
 frontend/.env.*
 !frontend/.env.example

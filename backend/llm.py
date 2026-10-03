@@ -3,6 +3,9 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
+import time
+import urllib.error
 import urllib.request
 from dataclasses import dataclass
 
@@ -24,7 +27,7 @@ def resolve_base_url(base_url: str) -> str:
     return base_url.replace("localhost", "host.docker.internal").replace("127.0.0.1", "host.docker.internal")
 
 
-def chat_completion(config: AIConfig, messages: list[dict]) -> str:
+def chat_completion(config: AIConfig, messages: list[dict], max_attempts: int = 4) -> str:
     url = resolve_base_url(config.base_url).rstrip("/") + "/chat/completions"
     body = json.dumps(
         {
@@ -35,15 +38,28 @@ def chat_completion(config: AIConfig, messages: list[dict]) -> str:
         }
     ).encode("utf-8")
 
-    request = urllib.request.Request(url, data=body, method="POST")
-    request.add_header("Content-Type", "application/json")
-    request.add_header("Accept", "application/json")
-    if config.api_key:
-        request.add_header("Authorization", f"Bearer {config.api_key}")
+    last_error: Exception | None = None
+    for attempt in range(max_attempts):
+        request = urllib.request.Request(url, data=body, method="POST")
+        request.add_header("Content-Type", "application/json")
+        request.add_header("Accept", "application/json")
+        if config.api_key:
+            request.add_header("Authorization", f"Bearer {config.api_key}")
 
-    with urllib.request.urlopen(request, timeout=config.timeout) as response:
-        raw = response.read().decode("utf-8")
-    return _content_from_response(raw)
+        try:
+            with urllib.request.urlopen(request, timeout=config.timeout) as response:
+                raw = response.read().decode("utf-8")
+            return _content_from_response(raw)
+        except urllib.error.HTTPError as exc:
+            if exc.code != 429 and exc.code < 500:
+                raise
+            last_error = exc
+            retry_after = exc.headers.get("Retry-After", "") if exc.headers else ""
+            delay = float(retry_after) if retry_after.isdigit() else 10.0 * (attempt + 1)
+            print(f"LLM {exc.code}, retrying in {delay:.0f}s (attempt {attempt + 1}/{max_attempts})...", file=sys.stderr)
+            time.sleep(delay)
+    assert last_error is not None
+    raise last_error
 
 
 def _content_from_response(raw: str) -> str:

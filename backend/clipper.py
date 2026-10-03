@@ -61,6 +61,16 @@ HOOK_WORDS = {
     "jadi",
     "kalau",
     "misalnya",
+    "stop",
+    "wait",
+    "tunggu",
+    "hampir",
+    "bocoran",
+    "fakta",
+    "jawabannya",
+    "kuncinya",
+    "kesalahan",
+    "gila",
 }
 
 WEAK_STARTS = {
@@ -547,6 +557,9 @@ def score_window(items: list[TranscriptSegment], duration: float) -> tuple[int, 
     words = re.findall(r"[\w']+", text.lower())
     first_word = words[0] if words else ""
     hook_hits = sorted(HOOK_WORDS.intersection(words))
+    # A hook only works when it opens the clip, so weigh the first two segments extra.
+    early_words = set(re.findall(r"[\w']+", " ".join(item.text for item in items[:2]).lower()))
+    early_hooks = sorted(HOOK_WORDS.intersection(early_words))
 
     score = 35
     reasons: list[str] = []
@@ -558,8 +571,12 @@ def score_window(items: list[TranscriptSegment], duration: float) -> tuple[int, 
         score += 12
         reasons.append("durasi masih oke")
 
+    if early_hooks:
+        score += 14
+        reasons.append("hook di awal: " + ", ".join(early_hooks[:3]))
+
     if hook_hits:
-        bump = min(24, len(hook_hits) * 6)
+        bump = min(18, len(hook_hits) * 5)
         score += bump
         reasons.append("ada keyword hook: " + ", ".join(hook_hits[:4]))
 
@@ -655,11 +672,18 @@ def select_candidates(candidates: list[ClipCandidate], limit: int) -> list[ClipC
 
 
 AI_RESCORE_POOL_LIMIT = 40
+AI_RESCORE_BATCH_SIZE = 12
 AI_SYSTEM_PROMPT = (
-    "You are an expert short-form video editor for TikTok, Reels, and YouTube Shorts. "
+    "You are a ruthless short-form clip scout for TikTok, Reels, and YouTube Shorts. "
     "You are given candidate transcript windows from a longer video. "
-    "Judge each candidate on how powerful it would be as a standalone vertical clip: "
-    "strong hook, emotional or surprising payoff, self-contained meaning, and clear value. "
+    "The first 3 seconds decide everything: a clip lives or dies by its HOOK. "
+    "Score each candidate on: (1) HOOK - does the opening line instantly stop the scroll with a "
+    "question, bold claim, number, controversy, challenge, or curiosity gap? (2) payoff - an "
+    "emotional, surprising, or useful conclusion; (3) self-contained meaning without needing "
+    "the rest of the video; (4) pace - no dead air. "
+    "Brutally penalize weak openings: greetings ('hai guys'), long context setup, mid-sentence "
+    "starts, and filler. A perfect payoff with a weak opening is still a bad clip. "
+    "The transcript is your only input - you cannot see the video. "
     "Return ONLY strict JSON, no markdown, no prose."
 )
 
@@ -679,35 +703,49 @@ def ai_rescore_candidates(candidates: list[ClipCandidate], config: AIConfig) -> 
             "end": round(candidate.end, 1),
             "duration": round(candidate.duration, 1),
             "heuristic_score": candidate.score,
-            "text": candidate.text[:1200],
+            "text": candidate.text[:800],
         }
         for idx, candidate in enumerate(pool)
     ]
-    user_prompt = (
-        "Score each candidate from 0-100 on standalone clip potential.\n"
-        "Respond with JSON shaped exactly like:\n"
-        '{"clips": [{"id": <int>, "score": <int 0-100>, '
-        '"title": "<catchy hook title, max 8 words>", '
-        '"reason": "<short why this clip works>"}]}\n\n'
-        "Candidates:\n" + json.dumps(items, ensure_ascii=False)
-    )
 
-    try:
-        console.print(f"[bold]AI agent scoring[/bold] {len(pool)} candidates via {config.model}...")
-        content = chat_completion(
-            config,
-            [
-                {"role": "system", "content": AI_SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
+    def user_prompt_for(batch: list[dict]) -> str:
+        return (
+            "Score each candidate 0-100 on standalone clip potential. The HOOK is worth at least "
+            "half of the score: judge only the opening lines on whether they instantly create "
+            "curiosity or tension. Candidates that open with greetings, filler, or slow setup must "
+            "score below 40 even when the rest of the window is great. In 'reason', say what the "
+            "hook is (quote its first few words).\n"
+            "Respond with JSON shaped exactly like:\n"
+            '{"clips": [{"id": <int>, "score": <int 0-100>, '
+            '"title": "<catchy hook title, max 8 words>", '
+            '"reason": "<short why this clip works>"}]}\n\n'
+            "Candidates:\n" + json.dumps(batch, ensure_ascii=False)
         )
-        parsed = extract_json(content)
-    except Exception as exc:
-        console.print(f"[yellow]AI agent failed, using heuristic scores:[/yellow] {exc}")
-        return candidates
 
-    scored = parsed.get("clips") if isinstance(parsed, dict) else None
-    if not isinstance(scored, list):
+    scored: list[dict] = []
+    batches = [items[i : i + AI_RESCORE_BATCH_SIZE] for i in range(0, len(items), AI_RESCORE_BATCH_SIZE)]
+    try:
+        console.print(
+            f"[bold]AI agent scoring[/bold] {len(pool)} candidates via {config.model} "
+            f"in {len(batches)} request(s)..."
+        )
+        for batch in batches:
+            content = chat_completion(
+                config,
+                [
+                    {"role": "system", "content": AI_SYSTEM_PROMPT},
+                    {"role": "user", "content": user_prompt_for(batch)},
+                ],
+            )
+            parsed = extract_json(content)
+            batch_clips = parsed.get("clips") if isinstance(parsed, dict) else None
+            if isinstance(batch_clips, list):
+                scored.extend(entry for entry in batch_clips if isinstance(entry, dict))
+    except Exception as exc:
+        # Keep whatever batches already succeeded; heuristics fill the rest.
+        console.print(f"[yellow]AI agent partially failed, keeping usable scores:[/yellow] {exc}")
+
+    if not scored:
         console.print("[yellow]AI agent returned no usable clips; keeping heuristic scores.[/yellow]")
         return candidates
 
@@ -731,6 +769,8 @@ def ai_rescore_candidates(candidates: list[ClipCandidate], config: AIConfig) -> 
         applied += 1
 
     console.print(f"[green]AI agent rescored[/green] {applied} candidates.")
+    if applied:
+        return pool
     return candidates
 
 

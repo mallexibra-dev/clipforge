@@ -12,6 +12,7 @@ import {
   uploadVideo,
 } from "../lib/apiClient";
 import {
+  AI_SETTINGS_STORAGE_KEY,
   DEFAULT_AI_BASE_URL,
   DEFAULT_AI_MODEL,
   DEFAULT_CAPTION_COLOR,
@@ -26,6 +27,7 @@ import {
   DEFAULT_MODEL,
   JOB_POLL_INTERVAL_MS,
   RECENT_LOG_LIMIT,
+  clampDurations,
 } from "../lib/constants";
 import { isActiveJob } from "../lib/utils";
 import type {
@@ -43,6 +45,26 @@ import { ResultsSection } from "./_components/ResultsSection";
 import { SiteFooter } from "./_components/SiteFooter";
 import { StatusPanel } from "./_components/StatusPanel";
 import { Topbar } from "./_components/Topbar";
+
+type AiSettings = {
+  enabled?: boolean;
+  baseUrl?: string;
+  model?: string;
+  apiKey?: string;
+};
+
+function loadAiSettings(): AiSettings {
+  try {
+    const raw = window.localStorage.getItem(AI_SETTINGS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as AiSettings;
+    return typeof parsed === "object" && parsed !== null ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+const savedAiSettings = loadAiSettings();
 
 export default function HomePage() {
   const [url, setUrl] = useState("");
@@ -64,10 +86,10 @@ export default function HomePage() {
   const [captionFont, setCaptionFont] = useState<CaptionFont>(DEFAULT_CAPTION_FONT);
   const [captionOutline, setCaptionOutline] = useState(DEFAULT_CAPTION_OUTLINE);
   const [captionOutlineColor, setCaptionOutlineColor] = useState(DEFAULT_CAPTION_OUTLINE_COLOR);
-  const [aiEnabled, setAiEnabled] = useState(false);
-  const [aiBaseUrl, setAiBaseUrl] = useState(DEFAULT_AI_BASE_URL);
-  const [aiModel, setAiModel] = useState(DEFAULT_AI_MODEL);
-  const [aiApiKey, setAiApiKey] = useState("");
+  const [aiEnabled, setAiEnabled] = useState(savedAiSettings.enabled ?? false);
+  const [aiBaseUrl, setAiBaseUrl] = useState(savedAiSettings.baseUrl ?? DEFAULT_AI_BASE_URL);
+  const [aiModel, setAiModel] = useState(savedAiSettings.model ?? DEFAULT_AI_MODEL);
+  const [aiApiKey, setAiApiKey] = useState(savedAiSettings.apiKey ?? "");
   const [requiredHashtags, setRequiredHashtags] = useState("");
   const [aiModels, setAiModels] = useState<string[]>([]);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
@@ -111,6 +133,17 @@ export default function HomePage() {
   useEffect(() => {
     loadJobs().catch(() => undefined);
   }, [loadJobs]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        AI_SETTINGS_STORAGE_KEY,
+        JSON.stringify({ enabled: aiEnabled, baseUrl: aiBaseUrl, model: aiModel, apiKey: aiApiKey }),
+      );
+    } catch {
+      // Storage unavailable.
+    }
+  }, [aiEnabled, aiBaseUrl, aiModel, aiApiKey]);
 
   useEffect(() => {
     if (!activeJobId) return;
@@ -199,14 +232,16 @@ export default function HomePage() {
 
     setIsSubmitting(true);
 
+    const [safeMinDuration, safeMaxDuration] = clampDurations(minDuration, maxDuration);
+
     try {
       const nextJob = await toast.promise(
         createJob({
           url: sourceMode === "url" ? trimmedUrl : "",
           source_file: sourceMode === "upload" ? uploadToken : "",
           top: targetClips > 0 ? targetClips : undefined,
-          min_duration: minDuration,
-          max_duration: maxDuration,
+          min_duration: safeMinDuration,
+          max_duration: safeMaxDuration,
           model: DEFAULT_MODEL,
           language: DEFAULT_LANGUAGE,
           burn_subtitles: burnSubtitles,
