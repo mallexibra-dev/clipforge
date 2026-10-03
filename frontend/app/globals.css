@@ -47,11 +47,17 @@ a {
 }
 
 .shell {
+  display: flex;
+  flex-direction: column;
   flex: 1 0 auto;
   width: 100%;
   max-width: 1280px;
   margin: 0 auto;
   padding: 32px 24px;
+}
+
+.pageBody {
+  flex: 1 0 auto;
 }
 
 .topbar {

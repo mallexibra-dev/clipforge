@@ -28,7 +28,7 @@ export default function RootLayout({
       <body className={`${inter.variable}`}>
         <div className="shell">
           <Topbar />
-          {children}
+          <div className="pageBody">{children}</div>
           <SiteFooter />
         </div>
         <Toaster
