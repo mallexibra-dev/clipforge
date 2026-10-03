@@ -952,7 +952,23 @@ h2 {
 }
 
 .downloadPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
   padding: 32px;
+}
+
+.downloadPanel .panelHeader {
+  margin-bottom: 0;
+}
+
+.downloadPanel .primary {
+  align-self: flex-end;
+  min-width: 220px;
+  min-height: 44px;
+  padding: 0 32px;
+  font-size: 14px;
+  margin-top: 0;
 }
 
 .downloadForm {
@@ -969,10 +985,6 @@ h2 {
 
 .downloadForm .segmentedControl :is(button, a) {
   min-height: 34px;
-}
-
-.downloadFormHelp {
-  margin: 2px 0 0;
 }
 
 .selectTrigger {

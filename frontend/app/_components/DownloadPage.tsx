@@ -169,7 +169,7 @@ export function DownloadPage() {
           )}
         </div>
 
-        <p className="field-help downloadFormHelp">
+        <p className="field-help">
           {mediaType === "video"
             ? "Video digabung ke MP4 pada resolusi maksimum yang dipilih."
             : "Audio diekstrak pada kualitas terbaik."}
