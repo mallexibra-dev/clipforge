@@ -12,6 +12,7 @@ import type {
   DownloadMediaType,
   DownloadResolution,
 } from "../../types/clip.type";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
 const MEDIA_TYPE_OPTIONS: { value: DownloadMediaType; label: string; icon: typeof Video }[] = [
   { value: "video", label: "Video", icon: Video },
@@ -104,20 +105,59 @@ export function DownloadPage() {
           <h2>Unduh Video YouTube</h2>
         </div>
 
-        <div className="segmentedField">
-          <span>Jenis Media</span>
-          <div className="segmentedControl" role="group" aria-label="Jenis media">
-            {MEDIA_TYPE_OPTIONS.map(({ value, label, icon: Icon }) => (
-              <button
-                key={value}
-                type="button"
-                className={mediaType === value ? "active" : ""}
-                onClick={() => handleMediaTypeChange(value)}
-              >
-                <Icon size={15} /> {label}
-              </button>
-            ))}
+        <div className="downloadOptions">
+          <div className="segmentedField">
+            <span>Jenis Media</span>
+            <div className="segmentedControl" role="group" aria-label="Jenis media">
+              {MEDIA_TYPE_OPTIONS.map(({ value, label, icon: Icon }) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={mediaType === value ? "active" : ""}
+                  onClick={() => handleMediaTypeChange(value)}
+                >
+                  <Icon size={15} /> {label}
+                </button>
+              ))}
+            </div>
           </div>
+
+          {mediaType === "video" ? (
+            <div className="field">
+              <span>Resolusi</span>
+              <Select value={resolution} onValueChange={(value) => setResolution(value as DownloadResolution)}>
+                <SelectTrigger aria-label="Resolusi">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {RESOLUTION_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : (
+            <div className="field">
+              <span>Format Audio</span>
+              <Select
+                value={audioFormat}
+                onValueChange={(value) => setAudioFormat(value as DownloadAudioFormat)}
+              >
+                <SelectTrigger aria-label="Format audio">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {AUDIO_FORMAT_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </div>
 
         <label className="field wide">
@@ -133,38 +173,6 @@ export function DownloadPage() {
               : "Audio diekstrak pada kualitas terbaik."}
           </p>
         </label>
-
-        <div className="gridFields">
-          {mediaType === "video" ? (
-            <label className="field">
-              <span>Resolusi</span>
-              <select
-                value={resolution}
-                onChange={(event) => setResolution(event.target.value as DownloadResolution)}
-              >
-                {RESOLUTION_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : (
-            <label className="field">
-              <span>Format Audio</span>
-              <select
-                value={audioFormat}
-                onChange={(event) => setAudioFormat(event.target.value as DownloadAudioFormat)}
-              >
-                {AUDIO_FORMAT_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-        </div>
 
         {error ? <p className="error">{error}</p> : null}
 

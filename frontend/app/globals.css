@@ -198,8 +198,7 @@ h2 {
   margin-top: 4px;
 }
 
-.field input,
-.field select {
+.field input {
   width: 100%;
   min-height: 44px;
   border: 1px solid var(--border);
@@ -211,8 +210,7 @@ h2 {
   font-size: 14px;
 }
 
-.field input:focus,
-.field select:focus {
+.field input:focus {
   border-color: var(--primary);
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
@@ -925,6 +923,10 @@ h2 {
     grid-template-columns: 1fr;
   }
 
+  .downloadOptions {
+    grid-template-columns: 1fr;
+  }
+
   .siteFooter {
     align-items: flex-start;
     flex-direction: column;
@@ -943,6 +945,91 @@ h2 {
 
 .downloadPanel {
   padding: 32px;
+}
+
+.downloadOptions {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.downloadOptions .field {
+  gap: 8px;
+}
+
+.selectTrigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px 0 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #FFFFFF;
+  color: var(--text-primary);
+  font-size: 14px;
+  outline: none;
+  cursor: pointer;
+}
+
+.selectTrigger:focus-visible,
+.selectTrigger[data-state="open"] {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.selectTrigger-chevron {
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+  transition: transform 0.15s ease;
+}
+
+.selectTrigger[data-state="open"] .selectTrigger-chevron {
+  transform: rotate(180deg);
+}
+
+.selectContent {
+  min-width: var(--radix-select-trigger-width);
+  max-height: var(--radix-select-content-available-height);
+  background: #FFFFFF;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+  z-index: 60;
+}
+
+.selectViewport {
+  padding: 6px;
+}
+
+.selectItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  color: var(--text-primary);
+  cursor: pointer;
+  outline: none;
+}
+
+.selectItem[data-highlighted] {
+  background: var(--bg);
+}
+
+.selectItem[data-state="checked"] {
+  font-weight: 600;
+}
+
+.selectItem-indicator {
+  display: inline-flex;
+  color: var(--primary);
 }
 
 .downloadCurrent {
