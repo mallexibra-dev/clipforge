@@ -8,6 +8,18 @@ import {
   MIN_DURATION_MAX,
   clampDurations,
 } from "../../lib/constants";
+import {
+  errorClass,
+  fieldHelpClass,
+  fieldLabelClass,
+  inputBaseClass,
+  panelClass,
+  panelHeaderClass,
+  primaryButtonClass,
+  segmentedContainer,
+  segmentedItem,
+  textFieldClass,
+} from "../../lib/ui";
 import type { CamCorner, CaptionFont, CaptionPosition, CropMode, SourceMode } from "../../types/clip.type";
 import { CaptionPreview } from "./CaptionPreview";
 
@@ -18,6 +30,12 @@ const CAM_CORNER_OPTIONS: { value: CamCorner; label: string }[] = [
   { value: "bl", label: "Kiri Bawah" },
   { value: "br", label: "Kanan Bawah" },
 ];
+
+const fontSelectClass = `${inputBaseClass} min-h-11 cursor-pointer rounded-lg pl-3 pr-8`;
+const colorInputClass = `${inputBaseClass} h-10 min-h-0 cursor-pointer rounded-[10px] p-0.5`;
+const fileInputClass = `${inputBaseClass} cursor-pointer px-2.5 py-2 [&::file-selector-button]:mr-3 [&::file-selector-button]:cursor-pointer [&::file-selector-button]:rounded-lg [&::file-selector-button]:bg-indigo-500/90 [&::file-selector-button]:px-3 [&::file-selector-button]:py-1.5 [&::file-selector-button]:font-semibold [&::file-selector-button]:text-white`;
+const sliderClass = "w-full cursor-pointer accent-brand";
+const segmentedLabelClass = `grid gap-2 ${fieldLabelClass}`;
 
 type ControlPanelProps = {
   cropMode: CropMode;
@@ -131,24 +149,24 @@ export function ControlPanel({
   const isProcessing = isSubmitting || isBusy;
 
   return (
-    <section className="panel controlPanel">
-      <div className="panelHeader">
-        <Scissors size={20} />
-        <h2>Potong Video</h2>
+    <section className={`${panelClass} flex flex-col gap-5 p-8`}>
+      <div className={`${panelHeaderClass} mb-6`}>
+        <Scissors className="text-brand" size={20} />
+        <h2 className="text-lg font-semibold text-ink">Potong Video</h2>
       </div>
 
-      <div className="segmentedField">
+      <div className={segmentedLabelClass}>
         <span>Sumber Video</span>
-        <div className="segmentedControl" role="group" aria-label="Sumber video">
+        <div className={segmentedContainer(2)} role="group" aria-label="Sumber video">
           <button
-            className={sourceMode === "url" ? "active" : ""}
+            className={segmentedItem(sourceMode === "url")}
             type="button"
             onClick={() => onSourceModeChange("url")}
           >
             <Link2 size={15} /> Link YouTube
           </button>
           <button
-            className={sourceMode === "upload" ? "active" : ""}
+            className={segmentedItem(sourceMode === "upload")}
             type="button"
             onClick={() => onSourceModeChange("upload")}
           >
@@ -158,24 +176,28 @@ export function ControlPanel({
       </div>
 
       {sourceMode === "url" ? (
-        <label className="field wide">
-          <span>Link Video YouTube</span>
+        <label className="col-span-full flex flex-col gap-1.5">
+          <span className={fieldLabelClass}>Link Video YouTube</span>
           <input
+            className={textFieldClass}
             value={url}
             onChange={(event) => onUrlChange(event.target.value)}
             placeholder="https://www.youtube.com/watch?v=..."
           />
-          <p className="field-help">Pastikan video memiliki percakapan yang jelas untuk hasil transkripsi terbaik.</p>
+          <p className={fieldHelpClass}>
+            Pastikan video memiliki percakapan yang jelas untuk hasil transkripsi terbaik.
+          </p>
         </label>
       ) : (
-        <label className="field wide">
-          <span>Upload File Video</span>
+        <label className="col-span-full flex flex-col gap-1.5">
+          <span className={fieldLabelClass}>Upload File Video</span>
           <input
+            className={fileInputClass}
             type="file"
             accept="video/mp4,video/quicktime,video/x-matroska,video/webm,.mp4,.mov,.mkv,.webm,.m4v,.avi"
             onChange={(event) => onUploadFileChange(event.target.files?.[0] ?? null)}
           />
-          <p className="field-help">
+          <p className={fieldHelpClass}>
             {isUploading
               ? "Mengunggah video..."
               : uploadFileName
@@ -183,15 +205,21 @@ export function ControlPanel({
                 : "Format didukung: MP4, MOV, MKV, WEBM, M4V, AVI."}
           </p>
           {uploadPreviewUrl ? (
-            <video className="uploadPreview" src={uploadPreviewUrl} controls preload="metadata" />
+            <video
+              className="mt-2.5 max-h-[280px] w-full rounded-xl border border-line bg-black"
+              src={uploadPreviewUrl}
+              controls
+              preload="metadata"
+            />
           ) : null}
         </label>
       )}
 
-      <div className="gridFields">
-        <label className="field">
-          <span>Durasi Minimum (detik)</span>
+      <div className="grid grid-cols-1 gap-4 min-[521px]:grid-cols-2">
+        <label className="flex flex-col gap-1.5">
+          <span className={fieldLabelClass}>Durasi Minimum (detik)</span>
           <input
+            className={textFieldClass}
             min={MIN_DURATION}
             max={MIN_DURATION_MAX}
             type="number"
@@ -203,11 +231,12 @@ export function ControlPanel({
               if (nextMax !== maxDuration) onMaxDurationChange(nextMax);
             }}
           />
-          <p className="field-help">Minimal 1 menit (60 detik).</p>
+          <p className={fieldHelpClass}>Minimal 1 menit (60 detik).</p>
         </label>
-        <label className="field">
-          <span>Durasi Maksimum (detik)</span>
+        <label className="flex flex-col gap-1.5">
+          <span className={fieldLabelClass}>Durasi Maksimum (detik)</span>
           <input
+            className={textFieldClass}
             min={MIN_DURATION + 5}
             max={MAX_DURATION}
             type="number"
@@ -219,13 +248,14 @@ export function ControlPanel({
               onMaxDurationChange(nextMax);
             }}
           />
-          <p className="field-help">Harus lebih besar dari durasi minimum.</p>
+          <p className={fieldHelpClass}>Harus lebih besar dari durasi minimum.</p>
         </label>
       </div>
 
-      <label className="field wide">
-        <span>Target Jumlah Clip</span>
+      <label className="col-span-full flex flex-col gap-1.5">
+        <span className={fieldLabelClass}>Target Jumlah Clip</span>
         <input
+          className={textFieldClass}
           min={0}
           max={maxClips ?? 50}
           type="number"
@@ -233,7 +263,7 @@ export function ControlPanel({
           placeholder="Auto (kosongkan = otomatis)"
           onChange={(event) => onTargetClipsChange(Math.max(0, Number(event.target.value)))}
         />
-        <p className="field-help">
+        <p className={fieldHelpClass}>
           {videoDuration
             ? `Durasi video ~${Math.round(videoDuration)}s. Maks ${maxClips} clip (durasi min × jumlah ≤ 80% video).`
             : "Kosongkan untuk otomatis. Akan disesuaikan dengan panjang video."}
@@ -243,25 +273,25 @@ export function ControlPanel({
         </p>
       </label>
 
-      <div className="segmentedField">
+      <div className={segmentedLabelClass}>
         <span>Mode Crop</span>
-        <div className="segmentedControl" role="group" aria-label="Mode crop video">
+        <div className={segmentedContainer(2)} role="group" aria-label="Mode crop video">
           <button
-            className={cropMode === "center" ? "active" : ""}
+            className={segmentedItem(cropMode === "center")}
             type="button"
             onClick={() => onCropModeChange("center")}
           >
             Center
           </button>
           <button
-            className={cropMode === "person" ? "active" : ""}
+            className={segmentedItem(cropMode === "person")}
             type="button"
             onClick={() => onCropModeChange("person")}
           >
             Follow Person
           </button>
           <button
-            className={cropMode === "streamer" ? "active" : ""}
+            className={segmentedItem(cropMode === "streamer")}
             type="button"
             onClick={() => onCropModeChange("streamer")}
           >
@@ -271,13 +301,17 @@ export function ControlPanel({
       </div>
 
       {cropMode === "streamer" ? (
-        <div className="segmentedField">
+        <div className={segmentedLabelClass}>
           <span>Posisi Webcam di Sumber</span>
-          <div className="segmentedControl segmentedControl--grid" role="group" aria-label="Posisi webcam">
+          <div
+            className={segmentedContainer(3)}
+            role="group"
+            aria-label="Posisi webcam"
+          >
             {CAM_CORNER_OPTIONS.map((option) => (
               <button
                 key={option.value}
-                className={camCorner === option.value ? "active" : ""}
+                className={segmentedItem(camCorner === option.value)}
                 type="button"
                 onClick={() => onCamCornerChange(option.value)}
               >
@@ -285,35 +319,36 @@ export function ControlPanel({
               </button>
             ))}
           </div>
-          <p className="field-help">
+          <p className={fieldHelpClass}>
             Webcam di-crop dari pojok ini lalu ditumpuk di atas gameplay (vertikal 9:16).
           </p>
         </div>
       ) : null}
 
-      <div className="aiBlock">
-        <label className="aiToggle">
-          <span className="aiToggleLabel">
+      <div className="flex flex-col gap-2 rounded-[14px] border border-slate-400/[0.18] bg-indigo-500/[0.06] px-4 py-3.5">
+        <label className="flex cursor-pointer items-center justify-between gap-3">
+          <span className="inline-flex items-center gap-2 text-[0.95rem] font-semibold text-ink">
             <Type size={16} />
             Caption Otomatis
           </span>
           <input
             type="checkbox"
+            className="h-[18px] w-[18px] cursor-pointer accent-indigo-500"
             checked={burnSubtitles}
             onChange={(event) => onBurnSubtitlesChange(event.target.checked)}
           />
         </label>
-        <p className="field-help">Tempelkan teks transkrip langsung ke dalam video.</p>
+        <p className={fieldHelpClass}>Tempelkan teks transkrip langsung ke dalam video.</p>
 
         {burnSubtitles ? (
-          <div className="captionFields">
-            <div className="captionControls">
-              <div className="segmentedField">
+          <div className="mt-1.5 flex flex-col gap-4">
+            <div className="flex flex-col gap-3">
+              <div className={segmentedLabelClass}>
                 <span>
                   Ukuran Font: <strong>{captionFontSize}</strong>
                 </span>
                 <input
-                  className="fontSlider"
+                  className={sliderClass}
                   type="range"
                   min={CAPTION_FONT_SIZE_MIN}
                   max={CAPTION_FONT_SIZE_MAX}
@@ -322,25 +357,25 @@ export function ControlPanel({
                   onChange={(event) => onCaptionFontSizeChange(Number(event.target.value))}
                   aria-label="Ukuran font caption"
                 />
-                <div className="sliderTicks">
+                <div className="mt-0.5 flex justify-between text-[11px] text-muted">
                   <span>Kecil</span>
                   <span>Sedang</span>
                   <span>Besar</span>
                 </div>
               </div>
 
-              <div className="segmentedField">
+              <div className={segmentedLabelClass}>
                 <span>Posisi</span>
-                <div className="segmentedControl" role="group" aria-label="Posisi caption">
+                <div className={segmentedContainer(2)} role="group" aria-label="Posisi caption">
                   <button
-                    className={captionPosition === "center" ? "active" : ""}
+                    className={segmentedItem(captionPosition === "center")}
                     type="button"
                     onClick={() => onCaptionPositionChange("center")}
                   >
                     Tengah
                   </button>
                   <button
-                    className={captionPosition === "bottom" ? "active" : ""}
+                    className={segmentedItem(captionPosition === "bottom")}
                     type="button"
                     onClick={() => onCaptionPositionChange("bottom")}
                   >
@@ -349,10 +384,10 @@ export function ControlPanel({
                 </div>
               </div>
 
-              <label className="field">
-                <span>Jenis Font</span>
+              <label className="flex flex-col gap-1.5">
+                <span className={fieldLabelClass}>Jenis Font</span>
                 <select
-                  className="fontSelect"
+                  className={fontSelectClass}
                   value={captionFont}
                   onChange={(event) => onCaptionFontChange(event.target.value as CaptionFont)}
                 >
@@ -364,18 +399,20 @@ export function ControlPanel({
                 </select>
               </label>
 
-              <div className="captionColorRow">
-                <label className="field captionColorField">
-                  <span>Warna Teks</span>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex max-w-[140px] flex-col gap-1.5">
+                  <span className={fieldLabelClass}>Warna Teks</span>
                   <input
+                    className={colorInputClass}
                     type="color"
                     value={captionColor}
                     onChange={(event) => onCaptionColorChange(event.target.value.toUpperCase())}
                   />
                 </label>
-                <label className="field captionColorField">
-                  <span>Warna Border</span>
+                <label className="flex max-w-[140px] flex-col gap-1.5">
+                  <span className={fieldLabelClass}>Warna Border</span>
                   <input
+                    className={colorInputClass}
                     type="color"
                     value={captionOutlineColor}
                     onChange={(event) => onCaptionOutlineColorChange(event.target.value.toUpperCase())}
@@ -383,12 +420,12 @@ export function ControlPanel({
                 </label>
               </div>
 
-              <div className="segmentedField">
+              <div className={segmentedLabelClass}>
                 <span>
                   Tebal Border: <strong>{captionOutline}</strong>
                 </span>
                 <input
-                  className="fontSlider"
+                  className={sliderClass}
                   type="range"
                   min={0}
                   max={8}
@@ -397,7 +434,7 @@ export function ControlPanel({
                   onChange={(event) => onCaptionOutlineChange(Number(event.target.value))}
                   aria-label="Tebal border caption"
                 />
-                <div className="sliderTicks">
+                <div className="mt-0.5 flex justify-between text-[11px] text-muted">
                   <span>Tanpa</span>
                   <span>Tebal</span>
                 </div>
@@ -416,37 +453,40 @@ export function ControlPanel({
         ) : null}
       </div>
 
-      <div className="aiBlock">
-        <label className="aiToggle">
-          <span className="aiToggleLabel">
+      <div className="flex flex-col gap-2 rounded-[14px] border border-slate-400/[0.18] bg-indigo-500/[0.06] px-4 py-3.5">
+        <label className="flex cursor-pointer items-center justify-between gap-3">
+          <span className="inline-flex items-center gap-2 text-[0.95rem] font-semibold text-ink">
             <Sparkles size={16} />
             AI Agent Pemilih Klip
           </span>
           <input
             type="checkbox"
+            className="h-[18px] w-[18px] cursor-pointer accent-indigo-500"
             checked={aiEnabled}
             onChange={(event) => onAiEnabledChange(event.target.checked)}
           />
         </label>
-        <p className="field-help">
+        <p className={fieldHelpClass}>
           LLM menilai setiap kandidat dari transkrip (teks saja, tanpa melihat video) dan memilih
           bagian dengan hook paling kuat untuk dijadikan klip. Pengaturan tersimpan otomatis di
           browser ini.
         </p>
 
         {aiEnabled ? (
-          <div className="aiFields">
-            <label className="field wide">
-              <span>Endpoint (Base URL)</span>
+          <div className="mt-1 flex flex-col gap-3">
+            <label className="col-span-full flex flex-col gap-1.5">
+              <span className={fieldLabelClass}>Endpoint (Base URL)</span>
               <input
+                className={textFieldClass}
                 value={aiBaseUrl}
                 onChange={(event) => onAiBaseUrlChange(event.target.value)}
                 placeholder="https://api.z.ai/api/coding/paas/v4"
               />
             </label>
-            <label className="field wide">
-              <span>API Key</span>
+            <label className="col-span-full flex flex-col gap-1.5">
+              <span className={fieldLabelClass}>API Key</span>
               <input
+                className={textFieldClass}
                 type="password"
                 value={aiApiKey}
                 onChange={(event) => onAiApiKeyChange(event.target.value)}
@@ -454,12 +494,12 @@ export function ControlPanel({
                 autoComplete="off"
               />
             </label>
-            <label className="field wide">
-              <span>Model</span>
-              <div className="modelRow">
+            <label className="col-span-full flex flex-col gap-1.5">
+              <span className={fieldLabelClass}>Model</span>
+              <div className="flex items-stretch gap-2">
                 {aiModels.length > 0 ? (
                   <select
-                    className="fontSelect"
+                    className={`${fontSelectClass} min-w-0 flex-1`}
                     value={aiModel}
                     onChange={(event) => onAiModelChange(event.target.value)}
                   >
@@ -472,6 +512,7 @@ export function ControlPanel({
                   </select>
                 ) : (
                   <input
+                    className={`${textFieldClass} min-w-0 flex-1`}
                     value={aiModel}
                     onChange={(event) => onAiModelChange(event.target.value)}
                     placeholder="glm-4.6"
@@ -479,23 +520,24 @@ export function ControlPanel({
                 )}
                 <button
                   type="button"
-                  className="loadModelsButton"
+                  className="inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg border border-line bg-panel px-3.5 text-[13px] font-semibold text-brand disabled:cursor-not-allowed disabled:opacity-50"
                   onClick={onLoadModels}
                   disabled={isLoadingModels || !aiBaseUrl.trim()}
                 >
-                  {isLoadingModels ? <Loader2 className="spin" size={14} /> : <RefreshCw size={14} />}
+                  {isLoadingModels ? <Loader2 className="animate-spin" size={14} /> : <RefreshCw size={14} />}
                   {aiModels.length > 0 ? "Refresh" : "Muat Model"}
                 </button>
               </div>
             </label>
-            <label className="field wide">
-              <span>Hashtag Wajib (opsional)</span>
+            <label className="col-span-full flex flex-col gap-1.5">
+              <span className={fieldLabelClass}>Hashtag Wajib (opsional)</span>
               <input
+                className={textFieldClass}
                 value={requiredHashtags}
                 onChange={(event) => onRequiredHashtagsChange(event.target.value)}
                 placeholder="clipforge, viral, fyp"
               />
-              <p className="field-help">
+              <p className={fieldHelpClass}>
                 Hashtag ini selalu ditambahkan ke caption yang digenerate. Pisahkan dengan koma.
               </p>
             </label>
@@ -503,10 +545,15 @@ export function ControlPanel({
         ) : null}
       </div>
 
-      {error ? <p className="error">{error}</p> : null}
+      {error ? <p className={errorClass}>{error}</p> : null}
 
-      <button className="primary" type="button" disabled={isStartDisabled} onClick={onStartJob}>
-        {isProcessing ? <Loader2 className="spin" size={18} /> : <Play size={18} />}
+      <button
+        className={`${primaryButtonClass} mt-2`}
+        type="button"
+        disabled={isStartDisabled}
+        onClick={onStartJob}
+      >
+        {isProcessing ? <Loader2 className="animate-spin" size={18} /> : <Play size={18} />}
         {isProcessing ? "Sedang Memproses..." : "Mulai Potong Video"}
       </button>
     </section>

@@ -25,10 +25,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${inter.variable}`}>
-        <div className="shell">
+      <body className={`${inter.variable} flex min-h-screen flex-col bg-canvas font-sans text-ink tracking-[-0.01em]`}>
+        <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 py-6 min-[921px]:px-6 min-[921px]:py-8">
           <Topbar />
-          <div className="pageBody">{children}</div>
+          <div className="flex flex-1 flex-col">{children}</div>
           <SiteFooter />
         </div>
         <Toaster
@@ -37,10 +37,10 @@ export default function RootLayout({
           toastOptions={{
             duration: 3600,
             style: {
-              border: "1px solid var(--border)",
-              borderRadius: "12px",
+              border: "1px solid var(--color-line)",
+              borderRadius: "var(--radius-xl)",
               boxShadow: "var(--shadow-md)",
-              color: "var(--text-primary)",
+              color: "var(--color-ink)",
               fontSize: "14px",
               fontWeight: 500,
               padding: "12px 14px",

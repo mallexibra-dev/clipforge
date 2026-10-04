@@ -1,16 +1,24 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CheckCircle2, Download, Loader2, Music, Video } from "lucide-react";
+import { Download, Loader2, Music, Video } from "lucide-react";
 import {
   createDownload,
-  deleteDownload,
   fetchDownload,
   fetchDownloadMetadata,
   getDownloadFileUrl,
 } from "../../lib/apiClient";
 import { JOB_POLL_INTERVAL_MS } from "../../lib/constants";
 import { formatDuration, handleDownload } from "../../lib/utils";
+import {
+  errorClass,
+  fieldLabelClass,
+  panelClass,
+  panelHeaderClass,
+  segmentedContainer,
+  segmentedItem,
+  textFieldClass,
+} from "../../lib/ui";
 import type {
   DownloadAudioFormat,
   DownloadJob,
@@ -20,7 +28,7 @@ import type {
 } from "../../types/clip.type";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
-type Phase = "idle" | "probing" | "preview" | "downloading" | "saved";
+type Phase = "idle" | "probing" | "preview" | "downloading";
 
 const MEDIA_TYPE_OPTIONS: { value: DownloadMediaType; label: string; icon: typeof Video }[] = [
   { value: "video", label: "Video", icon: Video },
@@ -56,6 +64,16 @@ const formatViews = (viewCount: number | null) =>
     ? `${new Intl.NumberFormat("id-ID", { notation: "compact", maximumFractionDigits: 1 }).format(viewCount)}x ditonton`
     : "";
 
+const jobFilename = (job: DownloadJob) =>
+  `${job.title ?? job.id}.${
+    job.request.media_type === "audio" ? job.request.audio_format ?? "mp3" : "mp4"
+  }`;
+
+const downloadButtonClass =
+  "inline-flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-brand px-6 text-sm font-semibold text-white shadow-sm transition enabled:hover:bg-brand-hover enabled:hover:shadow-md";
+
+const infoSpanClass = "text-xs text-muted";
+
 export function DownloadPage() {
   const [url, setUrl] = useState("");
   const [mediaType, setMediaType] = useState<DownloadMediaType>("video");
@@ -72,7 +90,7 @@ export function DownloadPage() {
     job?.status === "queued" || job?.status === "running" ? job.id : null;
 
   useEffect(() => {
-    setPhase((prev) => (prev === "preview" || prev === "saved" ? "idle" : prev));
+    setPhase((prev) => (prev === "preview" ? "idle" : prev));
   }, [url]);
 
   useEffect(() => {
@@ -85,18 +103,7 @@ export function DownloadPage() {
 
       if (next.status === "completed" && !savingRef.current) {
         savingRef.current = true;
-        const ext =
-          next.request.media_type === "audio" ? next.request.audio_format ?? "mp3" : "mp4";
-        try {
-          await handleDownload(
-            getDownloadFileUrl(next.id),
-            `${next.title ?? next.id}.${ext}`,
-            "File",
-          );
-        } finally {
-          await deleteDownload(next.id).catch(() => undefined);
-          setPhase("saved");
-        }
+        await handleDownload(getDownloadFileUrl(next.id), jobFilename(next), "File");
       }
 
       if (next.status === "failed") {
@@ -158,34 +165,45 @@ export function DownloadPage() {
     }
   }, [audioFormat, mediaType, metadata, resolution, url]);
 
+  const handleSaveAgain = useCallback(() => {
+    if (!job || job.status !== "completed") return;
+    void handleDownload(getDownloadFileUrl(job.id), jobFilename(job), "File");
+  }, [job]);
+
   const isDownloadReady = phase === "preview" || job?.status === "failed";
+  const isCompleted = job?.status === "completed";
 
   return (
     <>
-      <section className="panel downloadPanel">
-        <div className="panelHeader">
-          <Download size={20} />
-          <h2>Unduh Video YouTube</h2>
+      <section className={`${panelClass} flex flex-col gap-5 p-8`}>
+        <div className={panelHeaderClass}>
+          <Download className="text-brand" size={20} />
+          <h2 className="text-lg font-semibold text-ink">Unduh Video YouTube</h2>
         </div>
 
-        <div className="downloadForm">
-          <label className="field">
-            <span>Link Video YouTube</span>
+        <div className="grid grid-cols-2 items-start gap-3 min-[921px]:grid-cols-[minmax(0,1fr)_auto_150px]">
+          <label className="col-span-2 flex flex-col gap-2 min-[921px]:col-span-1">
+            <span className={fieldLabelClass}>Link Video YouTube</span>
             <input
+              className={textFieldClass}
               value={url}
               onChange={(event) => setUrl(event.target.value)}
               placeholder="https://www.youtube.com/watch?v=..."
             />
           </label>
 
-          <div className="segmentedField">
-            <span>Jenis Media</span>
-            <div className="segmentedControl" role="group" aria-label="Jenis media">
+          <div className="grid gap-2">
+            <span className={fieldLabelClass}>Jenis Media</span>
+            <div
+              className={segmentedContainer(2)}
+              role="group"
+              aria-label="Jenis media"
+            >
               {MEDIA_TYPE_OPTIONS.map(({ value, label, icon: Icon }) => (
                 <button
                   key={value}
                   type="button"
-                  className={mediaType === value ? "active" : ""}
+                  className={segmentedItem(mediaType === value, "", true)}
                   onClick={() => handleMediaTypeChange(value)}
                 >
                   <Icon size={15} /> {label}
@@ -195,8 +213,8 @@ export function DownloadPage() {
           </div>
 
           {mediaType === "video" ? (
-            <div className="field">
-              <span>Resolusi</span>
+            <div className="flex flex-col gap-2">
+              <span className={fieldLabelClass}>Resolusi</span>
               <Select value={resolution} onValueChange={(value) => setResolution(value as DownloadResolution)}>
                 <SelectTrigger aria-label="Resolusi">
                   <SelectValue />
@@ -211,8 +229,8 @@ export function DownloadPage() {
               </Select>
             </div>
           ) : (
-            <div className="field">
-              <span>Format Audio</span>
+            <div className="flex flex-col gap-2">
+              <span className={fieldLabelClass}>Format Audio</span>
               <Select
                 value={audioFormat}
                 onValueChange={(value) => setAudioFormat(value as DownloadAudioFormat)}
@@ -232,72 +250,87 @@ export function DownloadPage() {
           )}
         </div>
 
-        {error ? <p className="error">{error}</p> : null}
+        {error ? <p className={errorClass}>{error}</p> : null}
 
-        <button className="primary" type="button" disabled={isSubmitting} onClick={handleProcess}>
-          {isSubmitting ? <Loader2 className="spin" size={18} /> : <Download size={18} />}
+        <button
+          className="inline-flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-brand px-8 text-sm font-semibold text-white shadow-sm transition enabled:hover:bg-brand-hover enabled:hover:shadow-md disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-65"
+          type="button"
+          disabled={isSubmitting}
+          onClick={handleProcess}
+        >
+          {isSubmitting ? <Loader2 className="animate-spin" size={18} /> : <Download size={18} />}
           {isSubmitting ? "Memproses..." : "Proses"}
         </button>
       </section>
 
       {phase !== "idle" ? (
-        <div className="downloadPreviewSection">
-          <div className="downloadPreview">
+        <div className="mt-8">
+          <div className="flex flex-col gap-3 rounded-xl border border-line bg-panel p-4">
             {phase === "probing" || !metadata ? (
-              <div className="downloadPreview-loading">
-                <Loader2 className="spin" size={20} />
+              <div className="flex w-full items-center justify-center gap-2.5 px-2 py-4 text-sm text-muted">
+                <Loader2 className="animate-spin" size={20} />
                 <span>Membaca metadata video...</span>
               </div>
             ) : (
               <>
                 {metadata.thumbnail ? (
                   <img
-                    className="downloadPreview-thumb"
+                    className="aspect-video w-full rounded-lg bg-canvas object-cover"
                     src={metadata.thumbnail}
                     alt={metadata.title ?? "Thumbnail video"}
                   />
                 ) : (
-                  <div className="downloadPreview-thumb downloadPreview-thumbEmpty" />
+                  <div className="aspect-video w-full rounded-lg bg-canvas object-cover" />
                 )}
 
-                <div className="downloadPreview-info">
-                  <strong>{metadata.title}</strong>
-                  <span>
+                <div className="flex min-w-0 flex-col items-center gap-1 text-center">
+                  <strong className="text-[15px] font-semibold text-ink">{metadata.title}</strong>
+                  <span className={infoSpanClass}>
                     {[metadata.uploader, formatDuration(metadata.duration), formatViews(metadata.view_count)]
                       .filter(Boolean)
                       .join(" · ")}
                   </span>
-                  <span className="downloadPreview-format">
+                  <span className={`${infoSpanClass} font-semibold text-ink`}>
                     {formatOptionLabel(mediaType, resolution, audioFormat)}
                   </span>
 
-                  {phase === "downloading" && job?.progress !== null && job?.progress !== undefined ? (
-                    <div className="downloadProgress">
-                      <div className="downloadProgress-bar">
+                  {phase === "downloading" && job?.status === "running" && job.progress != null ? (
+                    <div className="mt-1.5 flex w-full items-center justify-center gap-2.5">
+                      <div className="h-1.5 max-w-[320px] flex-1 overflow-hidden rounded-full bg-line">
                         <div
-                          className="downloadProgress-fill"
+                          className="h-full rounded-full bg-brand transition-[width] duration-400"
                           style={{ width: `${Math.min(100, job.progress)}%` }}
                         />
                       </div>
-                      <span>{Math.floor(job.progress)}%</span>
+                      <span className="min-w-[38px] text-right text-xs font-semibold text-muted">
+                        {Math.floor(job.progress)}%
+                      </span>
                     </div>
                   ) : null}
 
                   {job?.status === "failed" && job.error ? (
-                    <span className="downloadError">{job.error}</span>
+                    <span className="text-xs text-danger">{job.error}</span>
                   ) : null}
 
-                  {phase === "saved" ? (
-                    <span className="downloadPreview-saved">
-                      <CheckCircle2 size={15} /> Tersimpan ke perangkat
-                    </span>
-                  ) : null}
-
-                  {isDownloadReady ? (
-                    <div className="downloadPreview-actions">
-                      <button className="primary" type="button" onClick={handleStartDownload}>
-                        <Download size={16} /> Unduh Sekarang
-                      </button>
+                  {isDownloadReady || isCompleted ? (
+                    <div className="mt-2 flex w-full">
+                      {isCompleted ? (
+                        <button
+                          className={downloadButtonClass}
+                          type="button"
+                          onClick={handleSaveAgain}
+                        >
+                          <Download size={16} /> Unduh Ulang
+                        </button>
+                      ) : (
+                        <button
+                          className={downloadButtonClass}
+                          type="button"
+                          onClick={handleStartDownload}
+                        >
+                          <Download size={16} /> Unduh Sekarang
+                        </button>
+                      )}
                     </div>
                   ) : null}
                 </div>

@@ -43,14 +43,16 @@ export function CaptionPreview({
   const fontCss = CAPTION_FONTS.find((item) => item.value === font)?.css ?? "sans-serif";
 
   return (
-    <div className="captionPreview">
-      <span className="captionPreviewLabel">Preview</span>
+    <div className="flex flex-col items-center gap-2">
+      <span className="self-start text-[0.8rem] font-semibold text-slate-400/90">Preview</span>
       <div
-        className="captionPreviewStage"
+        className="relative w-auto overflow-hidden rounded-2xl border border-slate-400/20 bg-[linear-gradient(160deg,#1e293b_0%,#0f172a_100%)]"
         style={{ height: PREVIEW_HEIGHT, aspectRatio: "9 / 16" }}
       >
         <div
-          className={`captionPreviewText captionPreviewText--${position}`}
+          className={`absolute left-[17%] right-[17%] text-center font-bold leading-[1.2] ${
+            position === "center" ? "top-1/2 -translate-y-1/2" : "bottom-[6%]"
+          }`}
           style={{
             fontSize: `${scaledFont}px`,
             color,

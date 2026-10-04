@@ -326,7 +326,7 @@ export default function HomePage() {
 
   return (
     <main>
-      <section className="workspace">
+      <section className="grid grid-cols-1 gap-8 min-[921px]:grid-cols-[minmax(360px,0.45fr)_minmax(420px,0.55fr)]">
         <ControlPanel
           cropMode={cropMode}
           error={error}
