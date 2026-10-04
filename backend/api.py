@@ -29,6 +29,7 @@ UPLOADS_DIR = BASE_DIR / "uploads"
 DOWNLOADS_DIR = OUTPUTS_DIR / "downloads"
 JOBS_PATH = BASE_DIR / "jobs.json"
 DOWNLOADS_PATH = BASE_DIR / "downloads.json"
+DOWNLOAD_FILE_TTL_SECONDS = 30 * 60
 ALLOWED_UPLOAD_EXTENSIONS = {".mp4", ".mov", ".mkv", ".webm", ".m4v", ".avi"}
 SECONDS_PER_TARGET_CLIP = 360
 MIN_AUTO_CLIPS = 2
@@ -640,8 +641,37 @@ def save_downloads_unlocked() -> None:
         DOWNLOADS_PATH.write_text(data, encoding="utf-8")
 
 
+def cleanup_stale_downloads() -> None:
+    cutoff = time.time() - DOWNLOAD_FILE_TTL_SECONDS
+
+    with downloads_lock:
+        stale_ids = []
+        for job_id, job in downloads.items():
+            try:
+                updated = datetime.fromisoformat(job.updated_at).timestamp()
+            except ValueError:
+                updated = 0
+            if job.status in {"completed", "failed"} and updated < cutoff:
+                stale_ids.append(job_id)
+
+        for job_id in stale_ids:
+            job = downloads.pop(job_id)
+            if job.file_url:
+                relative = unquote(job.file_url.removeprefix("/outputs/"))
+                file_path = (OUTPUTS_DIR / relative).resolve()
+                if OUTPUTS_DIR.resolve() in file_path.parents and file_path.is_file():
+                    file_path.unlink()
+        save_downloads_unlocked()
+
+    if DOWNLOADS_DIR.exists():
+        for path in DOWNLOADS_DIR.iterdir():
+            if path.is_file() and path.stat().st_mtime < cutoff:
+                path.unlink()
+
+
 downloads: dict[str, DownloadJob] = load_downloads()
 downloads_lock = threading.Lock()
+cleanup_stale_downloads()
 
 
 def set_download(job_id: str, **updates) -> None:
@@ -757,6 +787,7 @@ def run_download(job_id: str) -> None:
 
 @app.post("/api/downloads", response_model=DownloadJob)
 def create_download(request: DownloadRequest) -> DownloadJob:
+    cleanup_stale_downloads()
     job_id = uuid.uuid4().hex
     job = DownloadJob(
         id=job_id,
@@ -788,6 +819,7 @@ class DownloadMetadata(BaseModel):
 
 @app.get("/api/downloads/metadata", response_model=DownloadMetadata)
 def get_download_metadata(url: str) -> DownloadMetadata:
+    cleanup_stale_downloads()
     if not url.strip():
         raise HTTPException(status_code=400, detail="url is required")
 
