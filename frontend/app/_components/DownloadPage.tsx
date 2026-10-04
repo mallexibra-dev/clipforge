@@ -1,18 +1,26 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import toast from "react-hot-toast";
-import { Download, Loader2, Music, Save, Video } from "lucide-react";
-import { createDownload, fetchDownload, getDownloadFileUrl } from "../../lib/apiClient";
-import { JOB_POLL_INTERVAL_MS, statusCopy, statusIcon } from "../../lib/constants";
-import { formatBytes, handleDownload } from "../../lib/utils";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { CheckCircle2, Download, Loader2, Music, Video } from "lucide-react";
+import {
+  createDownload,
+  deleteDownload,
+  fetchDownload,
+  fetchDownloadMetadata,
+  getDownloadFileUrl,
+} from "../../lib/apiClient";
+import { JOB_POLL_INTERVAL_MS } from "../../lib/constants";
+import { formatDuration, handleDownload } from "../../lib/utils";
 import type {
   DownloadAudioFormat,
   DownloadJob,
   DownloadMediaType,
+  DownloadMetadata,
   DownloadResolution,
 } from "../../types/clip.type";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+
+type Phase = "idle" | "probing" | "preview" | "downloading" | "saved";
 
 const MEDIA_TYPE_OPTIONS: { value: DownloadMediaType; label: string; icon: typeof Video }[] = [
   { value: "video", label: "Video", icon: Video },
@@ -34,31 +42,97 @@ const AUDIO_FORMAT_OPTIONS: { value: DownloadAudioFormat; label: string }[] = [
   { value: "wav", label: "WAV" },
 ];
 
-const fileExtension = (job: DownloadJob) =>
-  job.request.media_type === "audio" ? job.request.audio_format ?? "mp3" : "mp4";
+const formatOptionLabel = (
+  mediaType: DownloadMediaType,
+  resolution: DownloadResolution,
+  audioFormat: DownloadAudioFormat,
+) =>
+  mediaType === "video"
+    ? `MP4 · ${resolution === "best" ? "Kualitas terbaik" : `${resolution}p`}`
+    : `${audioFormat.toUpperCase()} · Kualitas terbaik`;
+
+const formatViews = (viewCount: number | null) =>
+  viewCount && viewCount > 0
+    ? `${new Intl.NumberFormat("id-ID", { notation: "compact", maximumFractionDigits: 1 }).format(viewCount)}x ditonton`
+    : "";
 
 export function DownloadPage() {
   const [url, setUrl] = useState("");
   const [mediaType, setMediaType] = useState<DownloadMediaType>("video");
   const [resolution, setResolution] = useState<DownloadResolution>("best");
   const [audioFormat, setAudioFormat] = useState<DownloadAudioFormat>("mp3");
-  const [current, setCurrent] = useState<DownloadJob | null>(null);
+  const [phase, setPhase] = useState<Phase>("idle");
+  const [metadata, setMetadata] = useState<DownloadMetadata | null>(null);
+  const [job, setJob] = useState<DownloadJob | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const savingRef = useRef(false);
 
   const activeId =
-    current?.status === "queued" || current?.status === "running" ? current.id : null;
+    job?.status === "queued" || job?.status === "running" ? job.id : null;
+
+  useEffect(() => {
+    setPhase((prev) => (prev === "preview" || prev === "saved" ? "idle" : prev));
+  }, [url]);
 
   useEffect(() => {
     if (!activeId) return;
 
     const interval = window.setInterval(async () => {
       const next = await fetchDownload(activeId).catch(() => null);
-      if (next) setCurrent(next);
+      if (!next) return;
+      setJob(next);
+
+      if (next.status === "completed" && !savingRef.current) {
+        savingRef.current = true;
+        const ext =
+          next.request.media_type === "audio" ? next.request.audio_format ?? "mp3" : "mp4";
+        try {
+          await handleDownload(
+            getDownloadFileUrl(next.id),
+            `${next.title ?? next.id}.${ext}`,
+            "File",
+          );
+        } finally {
+          await deleteDownload(next.id).catch(() => undefined);
+          setPhase("saved");
+        }
+      }
+
+      if (next.status === "failed") {
+        setPhase("preview");
+      }
     }, JOB_POLL_INTERVAL_MS);
 
     return () => window.clearInterval(interval);
   }, [activeId]);
+
+  const handleProcess = useCallback(async () => {
+    const trimmedUrl = url.trim();
+    setError("");
+    setJob(null);
+    setMetadata(null);
+    savingRef.current = false;
+    if (!trimmedUrl) {
+      setError("Link YouTube tidak boleh kosong.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setPhase("probing");
+    try {
+      const meta = await fetchDownloadMetadata(trimmedUrl);
+      setMetadata(meta);
+      setPhase("preview");
+    } catch (processError) {
+      setPhase("idle");
+      setError(
+        processError instanceof Error ? processError.message : "Gagal membaca metadata video.",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [url]);
 
   const handleMediaTypeChange = useCallback((next: DownloadMediaType) => {
     setMediaType(next);
@@ -67,35 +141,24 @@ export function DownloadPage() {
 
   const handleStartDownload = useCallback(async () => {
     const trimmedUrl = url.trim();
+    if (!trimmedUrl || !metadata) return;
     setError("");
-    if (!trimmedUrl) {
-      setError("Link YouTube tidak boleh kosong.");
-      return;
-    }
-
-    setIsSubmitting(true);
+    savingRef.current = false;
     try {
-      const job = await toast.promise(
-        createDownload({
-          url: trimmedUrl,
-          media_type: mediaType,
-          resolution: mediaType === "video" ? resolution : undefined,
-          audio_format: mediaType === "audio" ? audioFormat : undefined,
-        }),
-        {
-          loading: "Memulai proses unduhan...",
-          success: "Proses unduhan berhasil dimulai!",
-          error: "Gagal memulai proses unduhan",
-        },
-      );
-      setUrl("");
-      setCurrent(job);
-    } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Gagal memulai unduhan.");
-    } finally {
-      setIsSubmitting(false);
+      const nextJob = await createDownload({
+        url: trimmedUrl,
+        media_type: mediaType,
+        resolution: mediaType === "video" ? resolution : undefined,
+        audio_format: mediaType === "audio" ? audioFormat : undefined,
+      });
+      setJob(nextJob);
+      setPhase("downloading");
+    } catch (downloadError) {
+      setError(downloadError instanceof Error ? downloadError.message : "Gagal memulai unduhan.");
     }
-  }, [audioFormat, mediaType, resolution, url]);
+  }, [audioFormat, mediaType, metadata, resolution, url]);
+
+  const isDownloadReady = phase === "preview" || job?.status === "failed";
 
   return (
     <>
@@ -169,71 +232,77 @@ export function DownloadPage() {
           )}
         </div>
 
-        <p className="field-help">
-          {mediaType === "video"
-            ? "Video digabung ke MP4 pada resolusi maksimum yang dipilih."
-            : "Audio diekstrak pada kualitas terbaik."}
-        </p>
-
         {error ? <p className="error">{error}</p> : null}
 
-        <button className="primary" type="button" disabled={isSubmitting} onClick={handleStartDownload}>
+        <button className="primary" type="button" disabled={isSubmitting} onClick={handleProcess}>
           {isSubmitting ? <Loader2 className="spin" size={18} /> : <Download size={18} />}
-          {isSubmitting ? "Sedang Memproses..." : "Mulai Unduh"}
+          {isSubmitting ? "Memproses..." : "Proses"}
         </button>
       </section>
 
-      {current ? (
-        <div className="downloadCurrent">
-          <div className="downloadRow">
-            <div className={`jobRow-status status-${current.status}`}>
-              {(() => {
-                const Icon = statusIcon[current.status];
-                return <Icon className={current.status === "running" ? "spin" : ""} size={18} />;
-              })()}
-            </div>
+      {phase !== "idle" ? (
+        <div className="downloadPreviewSection">
+          <div className="downloadPreview">
+            {phase === "probing" || !metadata ? (
+              <div className="downloadPreview-loading">
+                <Loader2 className="spin" size={20} />
+                <span>Membaca metadata video...</span>
+              </div>
+            ) : (
+              <>
+                {metadata.thumbnail ? (
+                  <img
+                    className="downloadPreview-thumb"
+                    src={metadata.thumbnail}
+                    alt={metadata.title ?? "Thumbnail video"}
+                  />
+                ) : (
+                  <div className="downloadPreview-thumb downloadPreview-thumbEmpty" />
+                )}
 
-            <div className="downloadRow-info">
-              <strong>{current.title ?? statusCopy[current.status]}</strong>
-              <span>
-                {current.request.media_type === "video"
-                  ? `Video · ${current.request.resolution === "best" ? "Terbaik" : `${current.request.resolution}p`}`
-                  : `Audio · ${(current.request.audio_format ?? "mp3").toUpperCase()}`}
-                {current.file_size ? ` · ${formatBytes(current.file_size)}` : ""}
-              </span>
+                <div className="downloadPreview-info">
+                  <strong>{metadata.title}</strong>
+                  <span>
+                    {[metadata.uploader, formatDuration(metadata.duration), formatViews(metadata.view_count)]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </span>
+                  <span className="downloadPreview-format">
+                    {formatOptionLabel(mediaType, resolution, audioFormat)}
+                  </span>
 
-              {activeId && current.progress !== null ? (
-                <div className="downloadProgress">
-                  <div className="downloadProgress-bar">
-                    <div
-                      className="downloadProgress-fill"
-                      style={{ width: `${Math.min(100, current.progress)}%` }}
-                    />
-                  </div>
-                  <span>{Math.floor(current.progress)}%</span>
+                  {phase === "downloading" && job?.progress !== null && job?.progress !== undefined ? (
+                    <div className="downloadProgress">
+                      <div className="downloadProgress-bar">
+                        <div
+                          className="downloadProgress-fill"
+                          style={{ width: `${Math.min(100, job.progress)}%` }}
+                        />
+                      </div>
+                      <span>{Math.floor(job.progress)}%</span>
+                    </div>
+                  ) : null}
+
+                  {job?.status === "failed" && job.error ? (
+                    <span className="downloadError">{job.error}</span>
+                  ) : null}
+
+                  {phase === "saved" ? (
+                    <span className="downloadPreview-saved">
+                      <CheckCircle2 size={15} /> Tersimpan ke perangkat
+                    </span>
+                  ) : null}
+
+                  {isDownloadReady ? (
+                    <div className="downloadPreview-actions">
+                      <button className="primary" type="button" onClick={handleStartDownload}>
+                        <Download size={16} /> Unduh Sekarang
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
-              ) : null}
-
-              {current.status === "failed" && current.error ? (
-                <span className="downloadRow-error">{current.error}</span>
-              ) : null}
-            </div>
-
-            {current.status === "completed" ? (
-              <button
-                type="button"
-                className="iconButton"
-                title="Simpan ke perangkat"
-                onClick={() =>
-                  handleDownload(
-                    getDownloadFileUrl(current.id),
-                    `${current.title ?? current.id}.${fileExtension(current)}`,
-                  )
-                }
-              >
-                <Save size={16} />
-              </button>
-            ) : null}
+              </>
+            )}
           </div>
         </div>
       ) : null}

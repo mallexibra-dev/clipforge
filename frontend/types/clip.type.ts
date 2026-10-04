@@ -111,3 +111,11 @@ export type DownloadJob = {
   created_at: string;
   updated_at: string;
 };
+
+export type DownloadMetadata = {
+  title: string | null;
+  thumbnail: string | null;
+  duration: number | null;
+  uploader: string | null;
+  view_count: number | null;
+};

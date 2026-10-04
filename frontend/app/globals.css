@@ -935,6 +935,14 @@ h2 {
     grid-template-columns: 1fr;
   }
 
+  .downloadPreview {
+    flex-direction: column;
+  }
+
+  .downloadPreview-thumb {
+    width: 100%;
+  }
+
   .siteFooter {
     align-items: flex-start;
     flex-direction: column;
@@ -1061,47 +1069,86 @@ h2 {
   color: var(--primary);
 }
 
-.downloadCurrent {
+.downloadPreviewSection {
   margin-top: 32px;
-  display: grid;
-  gap: 12px;
 }
 
-.downloadRow {
+.downloadPreview {
   display: flex;
-  align-items: center;
   gap: 16px;
-  min-height: 64px;
-  padding: 12px 20px;
+  padding: 16px;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
 }
 
-.downloadRow-info {
+.downloadPreview-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 16px 8px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.downloadPreview-thumb {
+  flex: 0 0 auto;
+  width: 200px;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+
+.downloadPreview-info {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   flex: 1;
   min-width: 0;
 }
 
-.downloadRow-info strong {
-  font-size: 14px;
+.downloadPreview-info strong {
+  font-size: 15px;
   font-weight: 600;
   color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.downloadRow-info > span {
+.downloadPreview-info > span {
   font-size: 12px;
   color: var(--text-secondary);
 }
 
-.downloadRow-error {
-  color: var(--danger) !important;
+.downloadPreview-info .downloadPreview-format {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.downloadError {
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.downloadPreview-saved {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--success);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.downloadPreview-actions {
+  display: flex;
+  margin-top: 8px;
+}
+
+.downloadPreview-actions .primary {
+  min-height: 44px;
+  padding: 0 24px;
+  font-size: 14px;
+  margin-top: 0;
 }
 
 .downloadProgress {

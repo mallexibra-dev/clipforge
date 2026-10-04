@@ -25,16 +25,27 @@ async function downloadClip(url: string, filename: string) {
   URL.revokeObjectURL(blobUrl);
 }
 
-export async function handleDownload(url: string, filename: string) {
-  toast
+export async function handleDownload(url: string, filename: string, subject = "Klip") {
+  return toast
     .promise(downloadClip(url, filename), {
-      loading: "Mengunduh klip...",
-      success: "Klip berhasil diunduh!",
-      error: "Gagal mengunduh klip",
+      loading: `Mengunduh ${subject.toLowerCase()}...`,
+      success: `${subject} berhasil disimpan ke perangkat!`,
+      error: `Gagal mengunduh ${subject.toLowerCase()}`,
     })
     .catch(() => {
       window.open(url, "_blank");
     });
+}
+
+export function formatDuration(seconds: number | null | undefined) {
+  if (!seconds || seconds <= 0) return "-";
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  }
+  return `${minutes}:${String(secs).padStart(2, "0")}`;
 }
 
 export async function handleCopyTitle(title: string) {

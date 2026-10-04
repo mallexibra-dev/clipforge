@@ -2,6 +2,7 @@ import type {
   ClipJob,
   CreateClipJobInput,
   DownloadJob,
+  DownloadMetadata,
   DownloadRequest,
 } from "../types/clip.type";
 
@@ -114,3 +115,28 @@ export const fetchDownload = async (jobId: string) => {
 };
 
 export const getDownloadFileUrl = (jobId: string) => `${API_BASE}/api/downloads/${jobId}/file`;
+
+export const fetchDownloadMetadata = async (url: string) => {
+  const response = await fetch(
+    `${CLIENT_API_BASE}/api/downloads/metadata?url=${encodeURIComponent(url)}`,
+    { cache: "no-store" },
+  );
+  if (!response.ok) {
+    let message = "Gagal membaca metadata video";
+    try {
+      const data = await response.json();
+      if (typeof data.detail === "string") message = data.detail;
+    } catch {
+      // keep default message
+    }
+    throw new Error(message);
+  }
+  return (await response.json()) as DownloadMetadata;
+};
+
+export const deleteDownload = async (jobId: string) => {
+  const response = await fetch(`${CLIENT_API_BASE}/api/downloads/${jobId}`, { method: "DELETE" });
+  if (!response.ok) {
+    throw new Error("Failed to delete download");
+  }
+};

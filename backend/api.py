@@ -778,6 +778,46 @@ def list_downloads() -> list[DownloadJob]:
         return sorted(downloads.values(), key=lambda item: item.created_at, reverse=True)
 
 
+class DownloadMetadata(BaseModel):
+    title: str | None = None
+    thumbnail: str | None = None
+    duration: int | None = None
+    uploader: str | None = None
+    view_count: int | None = None
+
+
+@app.get("/api/downloads/metadata", response_model=DownloadMetadata)
+def get_download_metadata(url: str) -> DownloadMetadata:
+    if not url.strip():
+        raise HTTPException(status_code=400, detail="url is required")
+
+    options = {
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+        "skip_download": True,
+    }
+    try:
+        with YoutubeDL(options) as ydl:
+            info = ydl.extract_info(url, download=False)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Gagal membaca metadata video: {exc}")
+
+    thumbnail = info.get("thumbnail")
+    if not thumbnail:
+        thumbs = info.get("thumbnails") or []
+        thumbnail = thumbs[-1].get("url") if thumbs else None
+
+    duration = info.get("duration")
+    return DownloadMetadata(
+        title=info.get("title"),
+        thumbnail=thumbnail,
+        duration=int(duration) if duration else None,
+        uploader=info.get("uploader") or info.get("channel"),
+        view_count=info.get("view_count"),
+    )
+
+
 @app.get("/api/downloads/{job_id}", response_model=DownloadJob)
 def get_download(job_id: str) -> DownloadJob:
     with downloads_lock:
@@ -799,6 +839,23 @@ def get_download_file(job_id: str) -> FileResponse:
     if OUTPUTS_DIR.resolve() not in file_path.parents or not file_path.is_file():
         raise HTTPException(status_code=404, detail="File not found")
     return FileResponse(file_path, filename=re.sub(r" \[[^\]]+\](\.[^.]+)$", r"\1", file_path.name))
+
+
+@app.delete("/api/downloads/{job_id}")
+def delete_download(job_id: str) -> dict[str, str]:
+    with downloads_lock:
+        job = downloads.pop(job_id, None)
+        if job:
+            save_downloads_unlocked()
+    if not job:
+        raise HTTPException(status_code=404, detail="Download not found")
+
+    if job.file_url:
+        relative = unquote(job.file_url.removeprefix("/outputs/"))
+        file_path = (OUTPUTS_DIR / relative).resolve()
+        if OUTPUTS_DIR.resolve() in file_path.parents and file_path.is_file():
+            file_path.unlink()
+    return {"status": "ok"}
 
 
 @app.delete("/api/downloads")
