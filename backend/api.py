@@ -692,6 +692,7 @@ def build_ytdlp_command(request: DownloadRequest) -> list[str]:
         "yt_dlp",
         "--no-playlist",
         "--no-warnings",
+        "--force-overwrites",
         "--newline",
         "--ffmpeg-location",
         imageio_ffmpeg.get_ffmpeg_exe(),
@@ -701,13 +702,27 @@ def build_ytdlp_command(request: DownloadRequest) -> list[str]:
     if request.media_type == "audio":
         command.extend(["-f", "ba/b", "-x", "--audio-format", request.audio_format, "--audio-quality", "0"])
     else:
-        if request.resolution == "best":
-            command.extend(["-f", "bv*+ba/b"])
-        else:
-            command.extend(["-f", f"bv*[height<={request.resolution}]+ba/b[height<={request.resolution}]"])
+        cap = "" if request.resolution == "best" else f"[height<={request.resolution}]"
+        command.extend(
+            [
+                "-f",
+                f"bv*{cap}[ext=mp4][vcodec^=avc1]+ba[ext=m4a]/b{cap}[ext=mp4]/bv*{cap}[ext=mp4]+ba[ext=m4a]/bv*{cap}+ba/b{cap}",
+            ]
+        )
         command.extend(["--merge-output-format", "mp4"])
     command.append(request.url)
     return command
+
+
+DOWNLOAD_UNSAFE_FILENAME_CHARS = re.compile(
+    r'[\\/:*?"<>|‹›꞉＂｜？＊⧸⧹\x00-\x1f\x7f]'
+)
+
+
+def sanitize_download_filename(name: str, fallback: str = "download") -> str:
+    cleaned = DOWNLOAD_UNSAFE_FILENAME_CHARS.sub("-", name)
+    cleaned = re.sub(r"-{2,}", "-", cleaned).strip(". -")
+    return cleaned or fallback
 
 
 def discover_download_file(started_at: float) -> Path | None:
@@ -870,7 +885,8 @@ def get_download_file(job_id: str) -> FileResponse:
     file_path = (OUTPUTS_DIR / relative).resolve()
     if OUTPUTS_DIR.resolve() not in file_path.parents or not file_path.is_file():
         raise HTTPException(status_code=404, detail="File not found")
-    return FileResponse(file_path, filename=re.sub(r" \[[^\]]+\](\.[^.]+)$", r"\1", file_path.name))
+    filename = re.sub(r" \[[^\]]+\](\.[^.]+)$", r"\1", file_path.name)
+    return FileResponse(file_path, filename=sanitize_download_filename(filename))
 
 
 @app.delete("/api/downloads/{job_id}")
