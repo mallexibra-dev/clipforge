@@ -78,7 +78,7 @@ export default function HomePage() {
   const [uploadPreviewUrl, setUploadPreviewUrl] = useState("");
   const [cropMode, setCropMode] = useState<CropMode>("person");
   const [camCorner, setCamCorner] = useState<CamCorner>("auto");
-  const [burnSubtitles, setBurnSubtitles] = useState(true);
+  const [burnSubtitles, setBurnSubtitles] = useState(false);
   const [captionFontSize, setCaptionFontSize] = useState(DEFAULT_CAPTION_FONT_SIZE);
   const [captionPosition, setCaptionPosition] = useState<CaptionPosition>(DEFAULT_CAPTION_POSITION);
   const [captionColor, setCaptionColor] = useState(DEFAULT_CAPTION_COLOR);

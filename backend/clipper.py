@@ -461,7 +461,14 @@ def download_video(url: str, work_dir: Path, force: bool = False) -> tuple[Path,
         "quiet": True,
         "noprogress": True,
         "no_warnings": True,
+        "force_overwrites": True,
         "ffmpeg_location": ffmpeg_path(),
+        "socket_timeout": 30,
+        "retries": 10,
+        "fragment_retries": 10,
+        "file_access_retries": 5,
+        "http_chunk_size": 10 * 1024 * 1024,
+        "concurrent_fragment_downloads": 4,
     }
 
     work_dir.mkdir(parents=True, exist_ok=True)

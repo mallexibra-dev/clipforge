@@ -192,10 +192,10 @@ export function DownloadPage() {
             />
           </label>
 
-          <div className="grid gap-2">
+          <div className="grid gap-2 min-[921px]:min-w-[17rem]">
             <span className={fieldLabelClass}>Jenis Media</span>
             <div
-              className={segmentedContainer(2)}
+              className={segmentedContainer(2, "w-full")}
               role="group"
               aria-label="Jenis media"
             >
@@ -203,7 +203,7 @@ export function DownloadPage() {
                 <button
                   key={value}
                   type="button"
-                  className={segmentedItem(mediaType === value, "", true)}
+                  className={segmentedItem(mediaType === value, "w-full px-4", true)}
                   onClick={() => handleMediaTypeChange(value)}
                 >
                   <Icon size={15} /> {label}
